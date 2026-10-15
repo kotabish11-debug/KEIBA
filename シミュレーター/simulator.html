@@ -337,6 +337,7 @@ input[type="range"] { width: 100%; accent-color: var(--turf); }
     <ul>
       <li>各馬の能力値に、展開(ペース × 脚質)・コースの有利不利・枠・馬場の補正と、ランダムなぶれを加えて、レースを何万回も走らせます。</li>
       <li>勝率・連対率・複勝率は、その中で1着・2着以内・3着以内に入った割合です。</li>
+      <li>JRAの重賞(G1・G2・G3)は、出走登録されるとClaudeが能力値を付けてデータを作り、レース一覧に自動で加わります。</li>
       <li>枠順・単勝オッズ・馬場・天気・馬体重・出走取消は、Claudeが定期的にスポーツナビ競馬・JRA・tenki.jpから取得し、自動で反映します。右上の表示が緑なら受信中です。</li>
       <li>券種ごとの推定オッズは、単勝オッズから市場の予想確率を出して計算した目安です(JRAの控除率を反映)。実際のオッズとはずれます。</li>
       <li>能力の数値は、「馬情報」フォルダーのデータ(スポーツナビ競馬・2026-10-16取得)を元にClaudeが付けた初期値です。予想は的中を保証しません。</li>
@@ -364,10 +365,10 @@ input[type="range"] { width: 100%; accent-color: var(--turf); }
     return { name, jockey, style, jisseki: f[0], kyori: f[1], course: f[2], choshi: f[3], kishu: f[4], heavy, odds, oddsKari: true, umaban: null, note };
   }
 
-  const RACES = [
+  // 最初から入っているレース。ほかのレースは、出走登録されると自動更新(db: races/<id>)で届く
+  const BUILTIN = [
     {
-      id: "shukasho2026", ready: true,
-      label: "10/18(日) 京都11R 秋華賞 GI",
+      id: "shukasho2026", iso: "2026-10-18", stage: "出走確定",
       name: "秋華賞", grade: "GI", place: "京都", no: 11,
       date: "2026年10月18日(日)", time: "15:40発走",
       course: "芝 右 2000m(内回り)", cond: "3歳牝馬 馬齢55kg", heads: 17,
@@ -393,10 +394,49 @@ input[type="range"] { width: 100%; accent-color: var(--turf); }
         H("ラベルセーヌ", "荻野極", "差し", [74, 75, 68, 85, 68], 0, 20, "4戦3勝。新潟1800で上がり32.3。フローラS(東京2000)は5着。"),
         H("ロザーンジュ", "今村聖奈", "先行", [52, 80, 65, 62, 65], 0, 150, "2000〜2200mの経験は豊富だが1勝馬。減量がなくなり55kg。")
       ]
-    },
-    { id: "fujis2026", ready: false, label: "10/17(土) 東京11R 富士S GII(データ未収集)" },
-    { id: "niigatahinba2026", ready: false, label: "10/18(日) 新潟11R 新潟牝馬S L(データ未収集)" }
+    }
   ];
+
+  // ---------------- 自動で届くレースの読み込み ----------------
+  const WEEK = ["日", "月", "火", "水", "木", "金", "土"];
+  function isoParts(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
+    if (!m) return null;
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    return { y: d.getFullYear(), mo: d.getMonth() + 1, d: d.getDate(), w: WEEK[d.getDay()] };
+  }
+  function dateLong(iso) { const p = isoParts(iso); return p ? `${p.y}年${p.mo}月${p.d}日(${p.w})` : ""; }
+  function dateShort(iso) { const p = isoParts(iso); return p ? `${p.mo}/${p.d}(${p.w})` : ""; }
+  function todayIso() { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`; }
+
+  // コースの形から、脚質・枠の有利不利を決める(データに書いてあればそちらを使う)
+  function defaultBias(d) {
+    const small = ["中山", "福島", "小倉", "函館", "札幌"].includes(d.place) || /内回り/.test(d.courseNote || "");
+    if (d.surface === "障") return { bias: { "逃げ": 1, "先行": 1, "差し": 0, "追込": -1.5 }, draw: 0.3 };
+    if (d.surface === "ダ") return { bias: { "逃げ": 1.5, "先行": 1.5, "差し": -0.5, "追込": -2 }, draw: 0.5 };
+    if (small) return { bias: { "逃げ": 1.5, "先行": 1.5, "差し": 0, "追込": -2.5 }, draw: 0.8 };
+    return { bias: { "逃げ": 0, "先行": 0.5, "差し": 0.5, "追込": 0 }, draw: 0.4 };
+  }
+  function hasAbilities(d) { return d && Array.isArray(d.horses) && d.horses.length >= 2 && d.horses.every(h => h && h.name && isFinite(Number(h.jisseki))); }
+  function raceFromDoc(d, id) {
+    const db = defaultBias(d);
+    const num = (v, def) => (isFinite(Number(v)) && v !== null && v !== "" ? Number(v) : def);
+    return {
+      id, iso: d.date, stage: d.stage || "", fromDb: true,
+      name: String(d.name || id), grade: String(d.grade || ""), place: String(d.place || ""), no: num(d.no, ""),
+      date: dateLong(d.date), time: d.time ? d.time + "発走" : "",
+      course: `${d.surface || "芝"} ${d.dir || ""} ${num(d.dist, "")}m${d.courseNote ? "(" + d.courseNote + ")" : ""}`.replace(/\s+/g, " "),
+      cond: String(d.cond || ""), heads: d.horses.filter(h => !h.scratched).length,
+      weather: String(d.weather || ""), goingDefault: 0, chaos: num(d.chaos, 8),
+      courseBias: d.courseBias || db.bias, drawBias: num(d.drawBias, db.draw),
+      horses: d.horses.map(h => ({
+        name: String(h.name), jockey: String(h.jockey || "未定"),
+        style: STYLES_RUN.includes(h.style) ? h.style : "差し",
+        jisseki: num(h.jisseki, 60), kyori: num(h.kyori, 65), course: num(h.course, 65), choshi: num(h.choshi, 65), kishu: num(h.kishu, 65),
+        heavy: num(h.heavy, 0), odds: num(h.odds, 50), oddsKari: true, umaban: null, note: String(h.note || "")
+      }))
+    };
+  }
 
   const STYLES_BET = {
     safe:    { label: "堅実",   types: ["単勝", "複勝", "ワイド", "馬連"], minP: 0.18, max: 4 },
@@ -407,30 +447,45 @@ input[type="range"] { width: 100%; accent-color: var(--turf); }
   const PAYBACK = { "単勝": 0.80, "複勝": 0.80, "ワイド": 0.775, "馬連": 0.775, "馬単": 0.75, "3連複": 0.75, "3連単": 0.725 };
 
   // ---------------- 状態 ----------------
-  const race = RACES[0];
-  const STORE_KEY = "keiba-sim-v1-" + race.id;
+  const SEL_KEY = "keiba-sim-selected";
+  let races = {};          // レースID → レース定義(最初から入っているもの + 自動で届いたもの)
+  let docs = {};           // レースID → 自動更新で届いたデータ(db: races/<id>)
+  BUILTIN.forEach(r => { races[r.id] = r; });
+  let race = BUILTIN[0];
   // roster: 登録全馬(編集対象) / horses: 取消を除いた、計算に使う馬
   let roster = clone(race.horses);
   let horses = roster;
-  const DEFAULT_SETTINGS = { budget: 3000, style: "balance", evMin: "1.1", going: String(race.goingDefault), manGoing: false, pace: "auto", chaos: 8, runs: "20000" };
-  let settings = clone(DEFAULT_SETTINGS);
+  function defaultSettings() {
+    return { budget: 3000, style: "balance", evMin: "1.1", going: String(race.goingDefault || 0), manGoing: false, pace: "auto", chaos: race.chaos || 8, runs: "20000" };
+  }
+  let settings = defaultSettings();
   let sim = null;
-  let autoData = null;   // 自動更新で届いたデータ(db: races/<id>)
+  let autoData = null;   // 表示中のレースの自動更新データ
 
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
+  function storeKey() { return "keiba-sim-v1-" + race.id; }
+  // 手で直した値を馬名で戻す(出走取消や登録馬の入れ替えがあっても崩れないように)
+  const EDITABLE = ["style", "jisseki", "kyori", "course", "choshi", "kishu", "heavy", "man"];
   function load() {
     try {
-      const raw = localStorage.getItem(STORE_KEY);
+      const raw = localStorage.getItem(storeKey());
       if (!raw) return;
       const d = JSON.parse(raw);
       if (d.settings) settings = Object.assign(settings, d.settings);
-      if (Array.isArray(d.horses) && d.horses.length === roster.length) {
-        roster = roster.map((h, i) => Object.assign(h, d.horses[i], { note: h.note, name: h.name, jockey: h.jockey }));
+      if (Array.isArray(d.horses)) {
+        for (const h of roster) {
+          const s = d.horses.find(x => x && x.name === h.name);
+          if (!s) continue;
+          for (const k of EDITABLE) if (s[k] !== undefined) h[k] = s[k];
+          const man = s.man || {};
+          if (man.umaban) h.umaban = s.umaban;
+          if (man.odds) { h.odds = s.odds; h.oddsKari = false; }
+        }
       }
     } catch (e) {}
   }
   function save() {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify({ settings, horses: roster })); } catch (e) {}
+    try { localStorage.setItem(storeKey(), JSON.stringify({ settings, horses: roster })); } catch (e) {}
   }
 
   // 自動更新データを反映。手で直した項目(man)はそのまま残す
@@ -446,12 +501,47 @@ input[type="range"] { width: 100%; accent-color: var(--turf); }
       const u = Number(a.umaban);
       if (u >= 1 && u <= 18 && !h.man.umaban) { h.umaban = u; h.umabanAuto = true; }
       const o = Number(a.odds);
-      if (o >= 1 && !h.man.odds) { h.odds = o; h.oddsKari = false; h.oddsAuto = true; }
+      if (o >= 1 && a.oddsKari !== true && !h.man.odds) { h.odds = o; h.oddsKari = false; h.oddsAuto = true; }
       h.weight = Number(a.weight) || null;
       h.weightDiff = (a.weightDiff === 0 || Number(a.weightDiff)) ? Number(a.weightDiff) : null;
     }
     const g = Number(d.going);
     if (d.going !== undefined && d.going !== null && g >= 0 && g <= 3 && !settings.manGoing) settings.going = String(g);
+  }
+
+  // 届いたデータからレース一覧を作り直す
+  function rebuildRaces() {
+    const next = {};
+    BUILTIN.forEach(r => { next[r.id] = r; });
+    for (const id of Object.keys(docs)) {
+      if (hasAbilities(docs[id])) next[id] = raceFromDoc(docs[id], id);
+    }
+    races = next;
+  }
+  function sortedRaces() {
+    const today = todayIso();
+    const list = Object.values(races);
+    const up = list.filter(r => (r.iso || "") >= today).sort((a, b) => (a.iso + a.place + a.no).localeCompare(b.iso + b.place + b.no));
+    const past = list.filter(r => (r.iso || "") < today).sort((a, b) => (b.iso || "").localeCompare(a.iso || ""));
+    return { up, past };
+  }
+  function defaultRaceId() {
+    let saved = null;
+    try { saved = localStorage.getItem(SEL_KEY); } catch (e) {}
+    if (saved && races[saved]) return saved;
+    const { up, past } = sortedRaces();
+    return (up[0] || past[0] || BUILTIN[0]).id;
+  }
+  function selectRace(id) {
+    const keep = { budget: settings.budget, style: settings.style, evMin: settings.evMin, runs: settings.runs };
+    race = races[id] || BUILTIN[0];
+    roster = clone(race.horses);
+    settings = Object.assign(defaultSettings(), keep);
+    autoData = docs[race.id] || null;
+    load();
+    applyAuto();
+    try { localStorage.setItem(SEL_KEY, race.id); } catch (e) {}
+    renderHeader(); renderConditions(); renderEdit(); renderAutoLog(); run(0);
   }
 
   // ---------------- 計算 ----------------
@@ -712,7 +802,11 @@ input[type="range"] { width: 100%; accent-color: var(--turf); }
   }
 
   function renderHeader() {
-    $("raceSel").innerHTML = RACES.map(r => `<option value="${r.id}" ${r.ready ? "" : "disabled"}>${esc(r.label)}</option>`).join("");
+    const { up, past } = sortedRaces();
+    const opt = r => `<option value="${esc(r.id)}" ${r.id === race.id ? "selected" : ""}>${esc(`${dateShort(r.iso)} ${r.place}${r.no}R ${r.name} ${r.grade}${r.stage ? "・" + r.stage : ""}`)}</option>`;
+    $("raceSel").innerHTML =
+      (up.length ? `<optgroup label="これからのレース(${up.length})">${up.map(opt).join("")}</optgroup>` : "") +
+      (past.length ? `<optgroup label="終わったレース">${past.map(opt).join("")}</optgroup>` : "");
     $("rPlace").textContent = race.place;
     $("rNo").textContent = race.no + "R";
     $("raceName").innerHTML = `${esc(race.name)}<span class="grade">${race.grade}</span>`;
@@ -757,6 +851,9 @@ input[type="range"] { width: 100%; accent-color: var(--turf); }
     const kari = horses.filter(h => h.oddsKari).length;
     const noUma = horses.filter(h => !Number(h.umaban)).length;
     const msgs = [];
+    const d = autoData || {};
+    if (race.stage === "特別登録") msgs.push(`<b>特別登録の段階です。</b>出走しない馬も含まれています。出走馬が確定すると、自動で入れ替わります。`);
+    if (race.stage === "結果確定" && d.result && Array.isArray(d.result.order)) msgs.push(`<b>結果:</b> ${d.result.order.slice(0, 3).map((n, i) => `${i + 1}着 ${esc(n)}`).join(" / ")}`);
     if (kari) msgs.push(`<b>単勝オッズは仮の値です(${kari}頭)。</b>Claudeが想定した人気順の目安で、買い目の金額はこの仮オッズで計算しています。発売が始まると、実際のオッズが自動で入ります。`);
     if (noUma) msgs.push(`<b>枠順が未確定です。</b>確定すると馬番が自動で入り、枠の有利不利も計算に入ります。`);
     const scr = roster.filter(h => h.scratched).map(h => h.name);
@@ -926,6 +1023,7 @@ input[type="range"] { width: 100%; accent-color: var(--turf); }
     $("pace").addEventListener("change", e => setS("pace", e.target.value));
     $("runs").addEventListener("change", e => setS("runs", e.target.value));
     $("chaos").addEventListener("input", e => { $("chaosVal").textContent = Number(e.target.value).toFixed(1); setS("chaos", e.target.value); });
+    $("raceSel").addEventListener("change", e => { selectRace(e.target.value); $("resetMsg").textContent = ""; });
     $("styleSeg").addEventListener("click", e => {
       const b = e.target.closest("button"); if (!b) return;
       setS("style", b.dataset.style);
@@ -941,8 +1039,8 @@ input[type="range"] { width: 100%; accent-color: var(--turf); }
       }
       armed = false;
       roster = clone(race.horses);
-      settings = clone(DEFAULT_SETTINGS);
-      try { localStorage.removeItem(STORE_KEY); } catch (e) {}
+      settings = defaultSettings();
+      try { localStorage.removeItem(storeKey()); } catch (e) {}
       applyAuto();
       $("resetBtn").textContent = "初期値に戻す";
       $("resetMsg").textContent = "初期値に戻しました(自動の値は残ります)";
@@ -959,25 +1057,37 @@ input[type="range"] { width: 100%; accent-color: var(--turf); }
     let db = null;
     try { db = await window.claude.use("db"); } catch (e) { db = null; }
     if (!db) { setSync("off", "自動更新なし(サインインが必要)"); return; }
+    let first = true;
     try {
-      db.doc("races/" + race.id).onSnapshot(snap => {
-        if (!snap.exists) { autoData = null; setSync("on", "自動更新: 新しい情報を待っています"); renderAutoLog(); return; }
-        autoData = snap.data();
-        applyAuto();
-        setSync("on", "自動更新: " + fmtTime(autoData.updatedAt) + " 取得");
-        renderAutoLog(); renderEdit(); renderConditions(); run(0);
+      // races コレクション全体を購読する。新しいレースのデータが届くと、レース一覧に自動で加わる
+      db.collection("races").onSnapshot(snap => {
+        const before = JSON.stringify(docs[race.id] || null);
+        const known = new Set(Object.keys(races));
+        docs = {};
+        for (const s of snap.docs) if (s.exists) docs[s.id] = s.data();
+        rebuildRaces();
+        const added = first ? [] : Object.keys(races).filter(id => !known.has(id));
+        if (first) {
+          first = false;
+          selectRace(defaultRaceId());
+        } else if (!races[race.id]) {
+          selectRace(defaultRaceId());
+        } else if (JSON.stringify(docs[race.id] || null) !== before) {
+          selectRace(race.id);
+        } else {
+          renderHeader();
+        }
+        const latest = Object.values(docs).map(x => x.updatedAt).filter(Boolean).sort().pop();
+        setSync("on", "自動更新: " + (latest ? fmtTime(latest) + " 取得" : "新しい情報を待っています") +
+          (added.length ? `・レース追加: ${added.map(id => races[id].name).join("、")}` : ""));
       }, () => { setSync("off", "自動更新が止まりました。ページを開き直してください"); });
     } catch (e) {
       setSync("off", "自動更新に接続できませんでした");
     }
   }
 
-  load();
-  renderHeader();
-  renderConditions();
-  renderEdit();
   bind();
-  run(0);
+  selectRace(defaultRaceId());
   connectAuto();
 })();
 </script>

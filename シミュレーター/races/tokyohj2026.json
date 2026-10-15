@@ -1,0 +1,32 @@
+{
+  "id": "tokyohj2026",
+  "name": "東京ハイジャンプ",
+  "grade": "J・GII",
+  "date": "2026-10-18",
+  "place": "東京",
+  "no": 9,
+  "time": "14:10",
+  "surface": "障",
+  "dist": 3110,
+  "dir": "左",
+  "courseNote": "",
+  "cond": "障害3歳以上オープン 別定",
+  "stage": "出走確定",
+  "chaos": 9,
+  "weather": "晴(予報・降水10%・最高25℃)",
+  "going": null,
+  "updatedAt": "2026-10-16T02:50:00+09:00",
+  "source": "スポーツナビ競馬・tenki.jp",
+  "memo": "出走馬確定(9頭)。枠順は未発表。過去の傾向では1番人気の複勝率が高く、逃げ・先行が強い",
+  "horses": [
+    { "name": "エコロデュエル", "jockey": "草野太郎", "style": "先行", "jisseki": 93, "kyori": 85, "course": 85, "choshi": 62, "kishu": 88, "heavy": 0, "odds": 1.8, "oddsKari": true, "umaban": null, "note": "J・GI 2連勝中(中山大障害・中山GJ)。昨年の東京HJは2着。約6か月の休み明けで62kg。" },
+    { "name": "キャネル", "jockey": "坂口智康", "style": "先行", "jisseki": 70, "kyori": 78, "course": 70, "choshi": 88, "kishu": 72, "heavy": 0, "odds": 8, "oddsKari": true, "umaban": null, "note": "障害4戦[2-2-0-0]で連勝中。重賞は初めてで、減量がなくなり60kg。" },
+    { "name": "サイード", "jockey": "小牧加矢太", "style": "先行", "jisseki": 79, "kyori": 85, "course": 86, "choshi": 45, "kishu": 78, "heavy": 0, "odds": 12, "oddsKari": true, "umaban": null, "note": "障害重賞で2着4回。昨年の東京HJ3着以来、約1年ぶりの出走。" },
+    { "name": "ジューンベロシティ", "jockey": "高田潤", "style": "先行", "jisseki": 84, "kyori": 85, "course": 87, "choshi": 80, "kishu": 88, "heavy": 0, "odds": 3.2, "oddsKari": true, "umaban": null, "note": "今年の障害重賞は3戦すべて2着(東京JSも2着)。安定しているが勝ちきれない。" },
+    { "name": "デシマルサーガ", "jockey": "大江原圭", "style": "差し", "jisseki": 55, "kyori": 70, "course": 68, "choshi": 45, "kishu": 66, "heavy": 0, "odds": 50, "oddsKari": true, "umaban": null, "note": "障害1勝。約6か月半の休み明けで、昨年の東京HJは6着。" },
+    { "name": "ホウオウプロサンゲ", "jockey": "小野寺祐太", "style": "先行", "jisseki": 76, "kyori": 80, "course": 70, "choshi": 66, "kishu": 75, "heavy": 0, "odds": 6, "oddsKari": true, "umaban": null, "note": "障害転向1年目で中山GJ4着。前走の阪神JSは1番人気で5着。" },
+    { "name": "マイネルグロン", "jockey": "五十嵐雄祐", "style": "差し", "jisseki": 82, "kyori": 82, "course": 70, "choshi": 40, "kishu": 76, "heavy": 0, "odds": 15, "oddsKari": true, "umaban": null, "note": "2023年の中山大障害勝ち馬。約1年半ぶりの出走で62kg。" },
+    { "name": "マイネルメサイア", "jockey": "上野翔", "style": "先行", "jisseki": 52, "kyori": 70, "course": 66, "choshi": 45, "kishu": 78, "heavy": 0, "odds": 60, "oddsKari": true, "umaban": null, "note": "障害1勝。前走は8着、昨年の東京HJは7着。" },
+    { "name": "ローンウルフ", "jockey": "伴啓太", "style": "差し", "jisseki": 52, "kyori": 70, "course": 65, "choshi": 52, "kishu": 70, "heavy": 0, "odds": 70, "oddsKari": true, "umaban": null, "note": "障害1勝。前走の新潟JSは9着。乗り替わり。" }
+  ]
+}
