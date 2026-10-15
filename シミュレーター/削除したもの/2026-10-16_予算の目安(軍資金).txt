@@ -1,0 +1,151 @@
+シミュレーター(simulator.html)から外した「予算の目安」欄(軍資金・レースごとの予算の目安・予想どおりなら戻る金額)
+外した日: 2026-10-16 / 理由: ユーザーから「いらない」と言われたため
+戻すときは、下の各部分を simulator.html の同じ場所に入れ直す
+
+==================== CSS(「/* ---------- 表 ---------- */」の前) ====================
+/* ---------- 予算の目安 ---------- */
+.plan-top { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: stretch; }
+.plan-top .field { justify-content: flex-end; }
+.plan-now {
+  flex: 1 1 320px; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center;
+  background: var(--inset); border: 1px solid var(--frame); border-radius: 6px; padding: 10px 14px;
+}
+.plan-now .k { font-size: 12.5px; color: var(--muted); display: block; }
+.plan-now .v { font-family: var(--f-num); font-size: 28px; font-weight: 700; color: var(--gold); line-height: 1.2; }
+.plan-now .v small { font-size: 13px; color: var(--muted); font-weight: 500; margin-left: 6px; }
+.plan-now .skip { font-size: 18px; color: var(--warn); font-weight: 800; }
+.t tfoot td { background: var(--inset); font-weight: 800; border-top: 1px solid var(--frame); }
+.t tr.cur td { background: var(--row-hover); }
+.rbtn { background: none; border: 0; padding: 0; cursor: pointer; text-align: left; border-bottom: 1px dashed var(--frame); }
+.rbtn:hover { color: var(--gold); }
+
+==================== HTML(「<!-- 結論・買い目 -->」の前) ====================
+  <!-- 予算の目安 -->
+  <section class="win" aria-labelledby="h-plan">
+    <div class="win-h"><h2 id="h-plan">予算の目安</h2><span class="sub">軍資金を入れると、レースごとに使う金額の目安を出します</span></div>
+    <div class="win-b">
+      <div class="plan-top">
+        <div class="field"><label for="bankroll">軍資金(円)</label><input type="number" id="bankroll" min="1000" step="1000" value="30000"></div>
+        <div class="plan-now" id="planNow"></div>
+      </div>
+      <div class="tbl-wrap">
+        <table class="t" id="planTable">
+          <thead><tr><th>日付</th><th>レース</th><th class="r">予算の目安</th><th class="r">予想どおりなら戻る金額</th><th class="r">軍資金の割合</th><th class="r">買い目</th><th>本命</th></tr></thead>
+          <tbody></tbody>
+          <tfoot></tfoot>
+        </table>
+      </div>
+      <div class="legend">
+        <span>目安 = 買う価値のある馬券(期待値が基準以上)について、資金に対する最適な賭け割合(ケリー基準)を足し、その4分の1を軍資金に掛けた額</span>
+        <span>1レースの上限は軍資金の5%。買い方と期待値の基準は「買い目」の設定を使います</span>
+        <span>レース名を押すと、そのレースに切り替わります</span>
+      </div>
+    </div>
+  </section>
+
+==================== JS: 状態(「let PROF = ...」の次) ====================
+  // 予算の目安: 軍資金はレースをまたいで共通。curPlan は表示中のレース、planCache はほかのレースの計算結果
+  const BANK_KEY = "keiba-sim-bankroll";
+  let bankroll = 30000;
+  try { const v = Number(localStorage.getItem(BANK_KEY)); if (v >= 100) bankroll = v; } catch (e) {}
+  let curPlan = null;
+  let planCache = {};
+
+==================== JS: renderBets の中(const kari = ... の次) ====================
+    curPlan = { k: kellySum(good), n: good.length, fav: horses[top[0]].name, kari, good, top };
+
+==================== JS: run() の最後(計算完了の表示の次) ====================
+      setTimeout(renderPlan, 0);
+
+==================== JS: run() の後ろの関数 ====================
+  // ---------------- 予算の目安 ----------------
+  // 各馬券のケリー比率((的中率×オッズ − 1) ÷ (オッズ − 1))の合計
+  function kellySum(bets) {
+    return bets.reduce((a, b) => a + (b.odds > 1 ? Math.max(0, (b.p * b.odds - 1) / (b.odds - 1)) : 0), 0);
+  }
+  // ケリー比率の合計の1/4を軍資金に掛ける。上限は軍資金の5%、100円単位
+  function planAmount(p) {
+    if (!p || !p.n) return 0;
+    const share = Math.min(0.05, p.k * 0.25);
+    return Math.max(100, Math.floor(bankroll * share / 100) * 100);
+  }
+  // 目安の金額で買い、予想どおりに決まったときの払戻
+  function planPay(p, amt) { return amt && p.good ? predPay(allocate(p.good, amt), p.top) : 0; }
+  // ほかのレースを、そのレースの保存値・自動更新データで一時的に計算する(表示中のレースの状態は元に戻す)
+  function planOf(r) {
+    if (planCache[r.id]) return planCache[r.id];
+    const saved = { race, roster, horses, settings, autoData };
+    try {
+      race = r;
+      roster = clone(r.horses);
+      settings = defaultSettings();
+      autoData = docs[r.id] || null;
+      load(); applyAuto();
+      Object.assign(settings, { style: saved.settings.style, evMin: saved.settings.evMin, runs: "5000" });
+      horses = roster.filter(h => !h.scratched);
+      if (horses.length < 2) return (planCache[r.id] = { k: 0, n: 0, fav: "" });
+      const s = simulate();
+      const { good } = pickBets(buildCandidates(s, marketProbs()));
+      const top = [...Array(s.n).keys()].sort((a, b) => s.win[b] - s.win[a])[0];
+      const order = [...Array(s.n).keys()].sort((a, b) => s.win[b] - s.win[a]);
+      return (planCache[r.id] = { k: kellySum(good), n: good.length, fav: horses[top].name, kari: horses.some(h => h.oddsKari), good, top: order });
+    } catch (e) {
+      return { k: 0, n: 0, fav: "" };
+    } finally {
+      race = saved.race; roster = saved.roster; horses = saved.horses; settings = saved.settings; autoData = saved.autoData;
+    }
+  }
+  function renderPlan() {
+    if (!curPlan) return;
+    if (document.activeElement !== $("bankroll")) $("bankroll").value = bankroll;
+    const amt = planAmount(curPlan);
+    $("planNow").innerHTML = amt
+      ? `<div><span class="k">このレース(${esc(race.name)})の予算の目安</span><span class="v">${yen(amt)}<small>軍資金の${pct(amt / bankroll)}・${curPlan.n}点</small></span></div>
+         <div><span class="k">予想どおりに決まったら戻る金額</span><span class="v">${yen10(planPay(curPlan, amt))}</span></div>
+         <button type="button" class="btn" id="usePlan">この金額で買い目を出す</button>`
+      : `<div><span class="k">このレース(${esc(race.name)})の予算の目安</span><span class="skip">0円(見送り)</span></div>
+         <span class="small muted">期待値${esc(settings.evMin)}以上の馬券がありません</span>`;
+    const { up } = sortedRaces();
+    const list = up.some(r => r.id === race.id) ? up : [race].concat(up);
+    let total = 0, totalPay = 0;
+    $("planTable").tBodies[0].innerHTML = list.map(r => {
+      const p = r.id === race.id ? curPlan : planOf(r);
+      const a = planAmount(p);
+      const pay = Math.floor(planPay(p, a) / 10) * 10;
+      total += a; totalPay += pay;
+      return `<tr class="${r.id === race.id ? "cur" : ""}">
+        <td class="num">${esc(dateShort(r.iso))}</td>
+        <td><button type="button" class="rbtn" data-race="${esc(r.id)}">${esc(r.place + r.no + "R " + r.name)}</button> ${gradeBadge(r.grade, true)}</td>
+        <td class="r num">${a ? yen(a) : '<span class="muted">見送り</span>'}${a && p.kari ? '<span class="muted small">仮</span>' : ""}</td>
+        <td class="r num">${a ? (pay ? yen(pay) : '<span class="muted small">当たらない</span>') : "－"}</td>
+        <td class="r num">${a ? pct(a / bankroll) : "－"}</td>
+        <td class="r num">${p.n ? p.n + "点" : "－"}</td>
+        <td>${esc(p.fav || "")}</td>
+      </tr>`;
+    }).join("");
+    $("planTable").tFoot.innerHTML = `<tr><td colspan="2">合計(${list.length}レース)</td><td class="r num">${yen(total)}</td><td class="r num">${yen(totalPay)}</td><td class="r num">${pct(total / bankroll)}</td><td colspan="2" class="muted small">「仮」は仮オッズでの目安。実オッズが出ると変わります</td></tr>`;
+  }
+
+==================== JS: bind() の中 ====================
+    const setS = (k, v) => { settings[k] = v; if (k === "style" || k === "evMin") planCache = {}; save(); run(150); };
+    $("bankroll").addEventListener("input", e => {
+      const v = Number(e.target.value);
+      if (!(v >= 100)) return;
+      bankroll = v;
+      try { localStorage.setItem(BANK_KEY, String(v)); } catch (err) {}
+      renderPlan();
+    });
+    $("planNow").addEventListener("click", e => {
+      if (!e.target.closest("#usePlan")) return;
+      const a = planAmount(curPlan);
+      if (!a) return;
+      settings.budget = a; $("budget").value = a; save(); run(0);
+      $("h-bets").scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    $("planTable").addEventListener("click", e => {
+      const b = e.target.closest("[data-race]");
+      if (b && races[b.dataset.race]) selectRace(b.dataset.race);
+    });
+
+==================== JS: connectAuto() の onSnapshot の中(docs を作り直した次) ====================
+        planCache = {};
