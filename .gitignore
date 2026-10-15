@@ -1,2 +1,5 @@
 # PCの実行ログ(GitHubには送らない)
 自動実行/logs/
+
+# Claude Codeの一時ファイル
+.claude/scheduled_tasks.lock
