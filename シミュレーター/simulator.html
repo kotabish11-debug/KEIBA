@@ -119,6 +119,16 @@ select:focus-visible, input:focus-visible, button:focus-visible { outline: 2px s
 .sync.on::before { background: var(--good); box-shadow: 0 0 6px var(--good); }
 .sync.off::before { background: var(--warn); }
 .status { font-size: 12.5px; color: var(--muted); }
+.next-up { font-size: 12.5px; padding: 2px 10px; border-radius: 999px; background: var(--inset); border: 1px solid var(--frame); color: var(--ink); cursor: help; }
+.next-up b { color: var(--gold); font-family: var(--f-num); font-weight: 700; }
+.sale { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; font-size: 13px; padding: 8px 14px; border-radius: 6px; background: var(--inset); border: 1px solid var(--line); }
+.sale .st { font-size: 14px; padding: 1px 10px; border-radius: 3px; background: var(--row-hover); }
+.sale.open { border-color: var(--good); }
+.sale.open .st { background: var(--good); color: var(--gold-ink); }
+.sale.wait .st { color: var(--warn); }
+.sale.end .st { color: var(--muted); }
+.sale .num { color: var(--gold); font-weight: 700; }
+.sale .muted { font-size: 12px; }
 
 /* ---------- レース見出し ---------- */
 .race-head { display: grid; grid-template-columns: auto 1fr; gap: 10px 18px; align-items: center; }
@@ -251,6 +261,12 @@ table.t { border-collapse: collapse; width: 100%; }
 .ev-good { color: var(--good); font-weight: 700; }
 .ev-bad { color: var(--muted); }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--muted); }
+.kinds { background: var(--inset); border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; }
+.kinds summary { cursor: pointer; font-weight: 800; color: var(--gold); font-size: 13.5px; }
+.kinds[open] summary { margin-bottom: 10px; }
+.kinds .t td { white-space: normal; min-width: 4em; }
+.kinds .t td b { color: var(--gold); }
+.kinds-notes { margin: 10px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--muted); line-height: 1.7; }
 
 /* ---------- 条件 ---------- */
 .cond-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
@@ -390,6 +406,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     </div>
     <div class="topbar-r">
       <span class="sync" id="sync">自動更新に接続中…</span>
+      <span class="next-up" id="nextUp"></span>
       <span class="status" id="status">計算中…</span>
     </div>
   </div>
@@ -401,6 +418,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
         <h1 class="race-name" id="raceName"></h1>
         <div class="race-meta" id="raceMeta"></div>
       </div>
+      <div class="sale" id="saleInfo" hidden></div>
       <div class="notice" id="oddsNotice" hidden></div>
       <div class="auto-log" id="autoLog" hidden></div>
     </div>
@@ -442,6 +460,28 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
         <span>期待値: 的中率 × オッズ。1.0を超えると、長く買い続けた場合に理論上プラス</span>
         <span>推定オッズ: 単勝オッズから計算した目安。購入前に実際のオッズを確認</span>
       </div>
+      <details class="kinds">
+        <summary>券種の説明</summary>
+        <div class="tbl-wrap">
+          <table class="t">
+            <thead><tr><th>券種</th><th>当たる条件</th><th>例(16頭立て)</th><th class="c">当たりやすさ</th><th class="c">配当</th><th class="r">払戻率</th></tr></thead>
+            <tbody>
+              <tr><td><span class="type-pill">単勝</span></td><td>選んだ1頭が<b>1着</b></td><td>組み合わせ16通り</td><td class="c">△</td><td class="c">中</td><td class="r num">80%</td></tr>
+              <tr><td><span class="type-pill">複勝</span></td><td>選んだ1頭が<b>3着以内</b>(7頭立て以下は2着以内)</td><td>16通り・当たりは3頭</td><td class="c">◎</td><td class="c">低</td><td class="r num">80%</td></tr>
+              <tr><td><span class="type-pill">ワイド</span></td><td>選んだ2頭が<b>どちらも3着以内</b>(着順は問わない)</td><td>120通り・当たりは3組</td><td class="c">○</td><td class="c">低〜中</td><td class="r num">77.5%</td></tr>
+              <tr><td><span class="type-pill">馬連</span></td><td>選んだ2頭が<b>1着と2着</b>(どちらが1着でもよい)</td><td>120通り</td><td class="c">△</td><td class="c">中</td><td class="r num">77.5%</td></tr>
+              <tr><td><span class="type-pill">馬単</span></td><td>選んだ2頭が<b>1着・2着の順番どおり</b></td><td>240通り</td><td class="c">×</td><td class="c">中〜高</td><td class="r num">75%</td></tr>
+              <tr><td><span class="type-pill">3連複</span></td><td>選んだ3頭が<b>1〜3着</b>(着順は問わない)</td><td>560通り</td><td class="c">×</td><td class="c">高</td><td class="r num">75%</td></tr>
+              <tr><td><span class="type-pill">3連単</span></td><td>選んだ3頭が<b>1着・2着・3着の順番どおり</b></td><td>3,360通り</td><td class="c">××</td><td class="c">最高</td><td class="r num">72.5%</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <ul class="kinds-notes">
+          <li>払戻率: 売上のうち、当たった人に戻る割合(JRAの規定)。残りは控除される。払戻率が高い単勝・複勝ほど、長く買ったときに損をしにくい</li>
+          <li>買い方ごとの券種: 堅実=単勝・複勝・ワイド・馬連 / バランス=左に加えて馬単・3連複 / 高配当=馬連・馬単・3連複・3連単</li>
+          <li>ほかに枠連(同じ枠の馬をまとめて買う馬連)と応援馬券(同じ馬の単勝と複勝のセット)もあるが、このシミュレーターでは使わない</li>
+        </ul>
+      </details>
     </div>
   </section>
 
@@ -646,6 +686,12 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   };
   // JRAの払戻率(1 - 控除率)
   const PAYBACK = { "単勝": 0.80, "複勝": 0.80, "ワイド": 0.775, "馬連": 0.775, "馬単": 0.75, "3連複": 0.75, "3連単": 0.725 };
+  // 買い目の表で券種名に重ねると出る説明
+  const BET_DESC = {
+    "単勝": "1頭が1着なら当たり", "複勝": "1頭が3着以内なら当たり", "ワイド": "2頭がどちらも3着以内なら当たり",
+    "馬連": "2頭が1着・2着なら当たり(順番は問わない)", "馬単": "2頭が1着・2着の順番どおりなら当たり",
+    "3連複": "3頭が1〜3着なら当たり(順番は問わない)", "3連単": "3頭が1着・2着・3着の順番どおりなら当たり"
+  };
 
   // ---------------- 状態 ----------------
   const SEL_KEY = "keiba-sim-selected";
@@ -1068,6 +1114,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     $("rNo").textContent = race.no + "R";
     $("raceName").innerHTML = `<span class="gold-text">${esc(race.name)}</span>${gradeBadge(race.grade)}`;
     renderMeta();
+    renderSale();
   }
   function renderMeta() {
     const d = autoData || {};
@@ -1086,6 +1133,105 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     const t = new Date(iso);
     if (isNaN(t)) return String(iso || "");
     return `${t.getMonth() + 1}/${t.getDate()} ${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
+  }
+  // 定期実行(クラウドのルーティン)の予定。日本時間。曜日は 0=日〜6=土
+  // ルーティンの時刻を変えたら、ここも直す(シミュレーター/自動更新の手順.md)
+  const UPDATE_SCHEDULE = [
+    { label: "枠順・オッズ・馬場・馬体重", days: [0, 1, 4, 5, 6], times: ["09:50", "11:50", "13:50", "15:50", "17:50"] },
+    { label: "出走馬・判断材料・能力値", days: [4, 5], times: ["18:20"] },
+    { label: "出走馬・判断材料・能力値", days: [5], times: ["12:20"] },
+    { label: "結果・翌週の特別登録・判断材料", days: [0], times: ["19:20"] }
+  ];
+  const JST = 9 * 3600 * 1000;
+  // 次の更新予定を返す。同じ時刻に重なったものはまとめる
+  function nextUpdate(now) {
+    const nowJ = new Date(now.getTime() + JST);   // UTCの各値が日本時間を表す
+    for (let dd = 0; dd <= 7; dd++) {
+      const day = new Date(Date.UTC(nowJ.getUTCFullYear(), nowJ.getUTCMonth(), nowJ.getUTCDate() + dd));
+      const hits = [];
+      for (const s of UPDATE_SCHEDULE) {
+        if (!s.days.includes(day.getUTCDay())) continue;
+        for (const t of s.times) {
+          const [h, m] = t.split(":").map(Number);
+          const at = Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), h, m) - JST;
+          if (at > now.getTime()) hits.push({ at, label: s.label });
+        }
+      }
+      if (hits.length) {
+        hits.sort((a, b) => a.at - b.at);
+        const first = hits[0].at;
+        const labels = [...new Set(hits.filter(x => x.at === first).map(x => x.label))];
+        return { at: new Date(first), labels };
+      }
+    }
+    return null;
+  }
+  function fmtJst(d) {
+    const j = new Date(d.getTime() + JST);
+    return `${j.getUTCMonth() + 1}/${j.getUTCDate()}(${WEEK[j.getUTCDay()]}) ${String(j.getUTCHours()).padStart(2, "0")}:${String(j.getUTCMinutes()).padStart(2, "0")}`;
+  }
+  function renderNextUpdate() {
+    const n = nextUpdate(new Date());
+    const el = $("nextUp");
+    if (!n) { el.textContent = ""; return; }
+    el.innerHTML = `次回更新 <b>${esc(fmtJst(n.at))}</b>・${esc(n.labels.join("/"))}`;
+    el.title = "定期更新の予定(日本時間)\n" + UPDATE_SCHEDULE.map(s =>
+      `${s.days.map(d => WEEK[d]).join("")} ${s.times.join("・")}: ${s.label}`).join("\n") +
+      "\n※更新には数分〜十数分かかります。発表前の情報は入りません";
+  }
+  // 馬券の発売時間(ネット投票・JRAダイレクト 2026年の規定。https://www.jra.go.jp/dento/direct/instructions/hatsubai.html)
+  // 夏の「競走時間帯の拡大」期間と年始の特例は扱わない
+  function jstAt(iso, dayOffset, hhmm) {
+    const p = isoParts(iso);
+    if (!p) return null;
+    const [h, m] = hhmm.split(":").map(Number);
+    return new Date(Date.UTC(p.y, p.mo - 1, p.d + dayOffset, h, m) - JST);
+  }
+  function saleWindows(r) {
+    const p = isoParts(r.iso);
+    const tm = /(\d{1,2}):(\d{2})/.exec(r.time || "");
+    if (!p || !tm) return null;
+    const close = new Date(jstAt(r.iso, 0, `${tm[1]}:${tm[2]}`).getTime() - 2 * 60 * 1000);   // 発走2分前
+    const g1 = /^(J・)?GI$/.test(r.grade || "");
+    const g23 = /^(J・)?GI{2,3}$/.test(r.grade || "");
+    const dow = new Date(Date.UTC(p.y, p.mo - 1, p.d)).getUTCDay();
+    const w = [];
+    if (dow === 6) {
+      w.push({ label: "発売", from: jstAt(r.iso, -1, "18:30"), to: close });
+    } else if (dow === 0) {
+      if (g1) w.push({ label: "前日発売", from: jstAt(r.iso, -2, "18:30"), to: jstAt(r.iso, -1, "17:30") });
+      else if (g23) w.push({ label: "前日発売", from: jstAt(r.iso, -1, "07:00"), to: jstAt(r.iso, -1, "17:30") });
+      w.push({ label: "当日発売", from: jstAt(r.iso, -1, "19:30"), to: close });
+    } else {
+      if (dow === 1 && g23) w.push({ label: "前日発売", from: jstAt(r.iso, -2, "19:30"), to: jstAt(r.iso, -1, "17:30") });
+      w.push({ label: w.length ? "当日発売" : "発売", from: jstAt(r.iso, -1, "19:30"), to: close });
+    }
+    return w;
+  }
+  function fmtLeft(ms) {
+    const min = Math.ceil(ms / 60000);
+    if (min < 60) return `${min}分`;
+    const h = Math.floor(min / 60);
+    if (h < 48) return `${h}時間${min % 60 ? (min % 60) + "分" : ""}`;
+    return `${Math.floor(h / 24)}日${h % 24 ? (h % 24) + "時間" : ""}`;
+  }
+  function saleStatus(w, now) {
+    const t = now.getTime();
+    for (const x of w) if (t >= x.from.getTime() && t < x.to.getTime()) return { cls: "open", text: `発売中・${x.label}の締切まであと${fmtLeft(x.to - t)}` };
+    const next = w.find(x => t < x.from.getTime());
+    if (next) return { cls: "wait", text: `${w.indexOf(next) > 0 ? "発売休止中" : "発売前"}・あと${fmtLeft(next.from - t)}で${next.label}開始` };
+    return { cls: "end", text: "発売終了" };
+  }
+  function renderSale() {
+    const el = $("saleInfo");
+    const w = saleWindows(race);
+    if (!w) { el.hidden = true; return; }
+    const st = saleStatus(w, new Date());
+    el.className = "sale " + st.cls;
+    el.innerHTML = `<b class="st">${esc(st.text)}</b>` +
+      w.map(x => `<span>${esc(x.label)} <b class="num">${esc(fmtJst(x.from))}</b> 〜 <b class="num">${esc(fmtJst(x.to))}</b></span>`).join("") +
+      `<span class="muted">ネット投票(即PATなど)の時間。締切は発走2分前。競馬場・WINSの窓口は時間が違う</span>`;
+    el.hidden = false;
   }
   function setSync(state, text) {
     const el = $("sync");
@@ -1241,7 +1387,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
 
     const rows = (bets.length ? bets : ref).map(b => `
       <tr class="${bets.length ? "" : "ref"}">
-        <td><span class="type-pill">${b.type}</span></td>
+        <td><span class="type-pill" title="${BET_DESC[b.type] || ""}">${b.type}</span></td>
         <td>${comboHtml(b)}</td>
         <td class="r num">${b.amount ? yen(b.amount) : "－"}</td>
         <td class="r num">${pct(b.p)}</td>
@@ -1617,6 +1763,8 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   }
 
   bind();
+  renderNextUpdate();
+  setInterval(() => { renderNextUpdate(); renderSale(); }, 60 * 1000);
   renderCal();
   selectRace(defaultRaceId());
   loadProfiles();
