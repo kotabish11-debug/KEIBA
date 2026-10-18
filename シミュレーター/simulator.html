@@ -491,7 +491,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     <div class="win-b">
       <div class="tbl-wrap">
         <table class="t" id="predTable">
-          <thead><tr><th class="c">印</th><th class="c">馬番</th><th>馬名</th><th>騎手</th><th>脚質</th><th>勝率</th><th class="r">連対率</th><th class="r">複勝率</th><th class="r">単勝</th><th class="r">単勝期待値</th><th class="r">能力値</th></tr></thead>
+          <thead><tr><th class="c">印</th><th class="c">馬番</th><th>馬名</th><th>騎手</th><th>脚質</th><th>勝率</th><th class="r" title="能力値だけで計算した勝率">能力のみ</th><th class="r" title="単勝オッズから見た勝率(人気薄の売れすぎを補正)">オッズ評価</th><th class="r">連対率</th><th class="r">複勝率</th><th class="r">単勝</th><th class="r">単勝期待値</th><th class="r">能力値</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -499,6 +499,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
         <span>馬名・騎手名を押すと、血統・戦績・騎手成績のカードが開きます</span>
         <span>◎本命 ○対抗 ▲単穴 △連下 ☆穴(人気薄で期待値が高い)</span>
         <span>連対率: 2着以内 / 複勝率: 3着以内</span>
+        <span>勝率 = 「能力のみ」と「オッズ評価」を、レース条件の「オッズの比重」で混ぜたもの</span>
       </div>
     </div>
   </section>
@@ -526,6 +527,10 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
         <div class="field"><label for="chaos">波乱度 <span class="num" id="chaosVal"></span></label>
           <input type="range" id="chaos" min="4" max="14" step="0.5" value="8">
           <span class="small">大きいほど実力どおりに決まりにくい(GIの標準は8前後)</span>
+        </div>
+        <div class="field"><label for="blend">オッズの比重 <span class="num" id="blendVal"></span></label>
+          <input type="range" id="blend" min="0" max="90" step="5" value="60">
+          <span class="small" id="blendNote">単勝オッズには多くの人の情報が入っていて、能力値だけより当たりやすい。0%で能力値だけ</span>
         </div>
         <div class="field"><label for="runs">シミュレーション回数</label>
           <select id="runs">
@@ -567,6 +572,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     <ul>
       <li>各馬の能力値に、展開(ペース × 脚質)・コースの有利不利・枠・馬場の補正と、ランダムなぶれを加えて、レースを何万回も走らせます。</li>
       <li>勝率・連対率・複勝率は、その中で1着・2着以内・3着以内に入った割合です。</li>
+      <li>実際の単勝オッズが出ると、能力値の勝率とオッズから見た勝率を「オッズの比重」で混ぜ、各馬の地力をその勝率に合うよう調整してから走らせます(Benterの方式)。オッズは人気薄ほど売れすぎる傾向があるので、人気馬寄りに補正して使います。</li>
       <li>JRAの重賞(G1・G2・G3)は、出走登録されるとClaudeが能力値を付けてデータを作り、レース一覧に自動で加わります。</li>
       <li>枠順・単勝オッズ・馬場・天気・馬体重・出走取消は、Claudeが定期的にスポーツナビ競馬・JRA・tenki.jpから取得し、自動で反映します。右上の表示が緑なら受信中です。</li>
       <li>券種ごとの推定オッズは、単勝オッズから市場の予想確率を出して計算した目安です(JRAの控除率を反映)。実際のオッズとはずれます。</li>
@@ -703,7 +709,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   let roster = clone(race.horses);
   let horses = roster;
   function defaultSettings() {
-    return { budget: 3000, style: "balance", evMin: "1.1", going: String(race.goingDefault || 0), manGoing: false, pace: "auto", chaos: race.chaos || 8, runs: "20000" };
+    return { budget: 3000, style: "balance", evMin: "1.1", going: String(race.goingDefault || 0), manGoing: false, pace: "auto", chaos: race.chaos || 8, runs: "20000", blend: 60 };
   }
   let settings = defaultSettings();
   let sim = null;
@@ -718,7 +724,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   function oldStoreKey() { return "keiba-sim-v1-" + race.id; }
   // 手で直した値を馬名で戻す(出走取消や登録馬の入れ替えがあっても崩れないように)
   const EDITABLE = ["style", "jisseki", "kyori", "course", "choshi", "kishu", "heavy"];
-  const KEEP_SETTINGS = ["budget", "style", "evMin", "runs", "pace"];
+  const KEEP_SETTINGS = ["budget", "style", "evMin", "runs", "pace", "blend"];
   function load() {
     try {
       const raw = localStorage.getItem(storeKey());
@@ -820,7 +826,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     return (up[0] || past[0] || BUILTIN[0]).id;
   }
   function selectRace(id) {
-    const keep = { budget: settings.budget, style: settings.style, evMin: settings.evMin, runs: settings.runs };
+    const keep = { budget: settings.budget, style: settings.style, evMin: settings.evMin, runs: settings.runs, blend: settings.blend };
     race = races[id] || BUILTIN[0];
     roster = clone(race.horses);
     settings = Object.assign(defaultSettings(), keep);
@@ -879,20 +885,73 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     };
   }
 
+  // 単勝オッズから見た「本当の」勝率。JRAでは人気薄ほど売れすぎる(本命-大穴バイアス)ので、
+  // 1/オッズ をそのまま使わず、べき乗で人気馬寄りに補正する
+  const FLB_GAMMA = 1.15;
+  function marketWin() {
+    const raw = horses.map(h => Math.pow(1 / oddsOf(h), FLB_GAMMA));
+    const t = raw.reduce((a, b) => a + b, 0);
+    return raw.map(v => v / t);
+  }
+  // 実際のオッズが全馬そろっているときだけ、オッズを予想に混ぜる
+  function canBlend() { return horses.length >= 2 && horses.every(h => !h.oddsKari && Number(h.odds) >= 1); }
+  function blendWeight() { return canBlend() ? clampNum(settings.blend, 0, 100) / 100 : 0; }
+
   function simulate() {
-    const n = horses.length, N = Number(settings.runs);
+    const n = horses.length;
     const going = Number(settings.going);
     const sigma = Number(settings.chaos) + going * 0.6;
     const pp = paceProbs();
+    const fixed = baseFixed(going);
+    const model = runSim(fixed, sigma, pp, Number(settings.runs));
+    const wMk = blendWeight();
+    model.modelWin = model.win;
+    model.mkWin = canBlend() ? marketWin() : null;
+    model.wMk = wMk;
+    if (!wMk) return model;
+    // 目標の勝率 = 能力値の勝率 と 市場の勝率 の対数での加重平均(Benterの方式)
+    const pm = model.win.map(v => Math.max(v, 0.3 / model.N));
+    const lg = pm.map((v, i) => (1 - wMk) * Math.log(v) + wMk * Math.log(model.mkWin[i]));
+    const mx = Math.max(...lg);
+    const ex = lg.map(v => Math.exp(v - mx));
+    const tot = ex.reduce((a, b) => a + b, 0);
+    const target = ex.map(v => v / tot);
+    // 各馬の地力を少しずつずらし、シミュレーションの勝率が目標に合うようにする(展開・枠・馬場の効果は残る)
+    const adj = fixed.slice();
+    const M = 6000;
+    for (let it = 0; it < 10; it++) {
+      const s = runSim(adj, sigma, pp, M, 7 + it);
+      let err = 0;
+      for (let i = 0; i < n; i++) {
+        const w = Math.max(s.win[i], 0.5 / M);
+        const d = Math.log(target[i]) - Math.log(w);
+        err = Math.max(err, Math.abs(d));
+        adj[i] += Math.max(-8, Math.min(8, 0.35 * sigma * d));
+      }
+      if (err < 0.04) break;
+    }
+    const out = runSim(adj, sigma, pp, Number(settings.runs));
+    out.modelWin = model.win;
+    out.mkWin = model.mkWin;
+    out.wMk = wMk;
+    out.target = target;
+    return out;
+  }
+
+  function baseFixed(going) {
     const total = roster.length;
-    const fixed = horses.map((h, i) => {
+    return horses.map((h, i) => {
       let s = baseScore(h) + (race.courseBias[h.style] || 0);
       const u = Number(h.umaban);
       if (u >= 1 && u <= total) s += race.drawBias * (1 - 2 * (u - 1) / Math.max(1, total - 1));
       s += clampNum(h.heavy, -3, 3) * going * 0.9;
       return s;
     });
-    const rnd = mulberry32(20261018);
+  }
+
+  function runSim(fixed, sigma, pp, N, seed) {
+    const n = fixed.length;
+    const rnd = mulberry32(20261018 + (seed || 0));
     const order = new Uint8Array(N * 3);
     const win = new Float64Array(n), top2 = new Float64Array(n), top3 = new Float64Array(n);
     const perf = new Float64Array(n);
@@ -1271,6 +1330,8 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     $("chaos").value = settings.chaos;
     $("chaosVal").textContent = Number(settings.chaos).toFixed(1);
     $("runs").value = settings.runs;
+    $("blend").value = settings.blend;
+    $("blendVal").textContent = Number(settings.blend) + "%";
     $("budget").value = settings.budget;
     $("evMin").value = settings.evMin;
     renderLive();
@@ -1279,6 +1340,10 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     document.querySelectorAll("#styleSeg button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.style === settings.style)));
     const pp = paceProbs();
     $("paceProbs").innerHTML = ["high", "mid", "slow"].map(k => `<span>${PACE_LABEL[k]} ${pct(pp[k], 0)}</span>`).join("");
+    $("blend").disabled = !canBlend();
+    $("blendNote").textContent = canBlend()
+      ? "単勝オッズには多くの人の情報が入っていて、能力値だけより当たりやすい。0%で能力値だけ"
+      : "実際の単勝オッズが全頭そろうと使えます(仮オッズの間は能力値だけで計算)";
   }
 
   function renderEdit() {
@@ -1320,7 +1385,8 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     lastMarks = m;
     const idx = [...Array(s.n).keys()].sort((a, b) => s.win[b] - s.win[a]);
     const maxW = Math.max(...s.win);
-    $("predSub").textContent = `${Number(settings.runs).toLocaleString()}回のシミュレーション・馬場${GOING_LABEL[settings.going]}・波乱度${Number(settings.chaos).toFixed(1)}`;
+    $("predSub").textContent = `${Number(settings.runs).toLocaleString()}回のシミュレーション・馬場${GOING_LABEL[settings.going]}・波乱度${Number(settings.chaos).toFixed(1)}・` +
+      (s.wMk ? `オッズの比重${Math.round(s.wMk * 100)}%` : (canBlend() ? "能力値のみ" : "能力値のみ(実際のオッズが未発表)"));
     $("predTable").tBodies[0].innerHTML = idx.map(i => {
       const h = horses[i], ev = s.win[i] * oddsOf(h);
       return `<tr>
@@ -1330,6 +1396,8 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
         <td>${jockeyBtn(h.jockey)}</td>
         <td>${h.style}</td>
         <td><div class="bar"><i style="width:${(s.win[i] / maxW * 100).toFixed(1)}%"></i><span>${pct(s.win[i])}</span></div></td>
+        <td class="r num muted">${pct(s.modelWin[i])}</td>
+        <td class="r num muted">${s.mkWin ? pct(s.mkWin[i]) : "－"}</td>
         <td class="r num">${pct(s.top2[i])}</td>
         <td class="r num">${pct(s.top3[i])}</td>
         <td class="r num">${oddsOf(h).toFixed(1)}${h.oddsKari ? '<span class="muted small">仮</span>' : ""}</td>
@@ -1687,6 +1755,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     });
     $("pace").addEventListener("change", e => setS("pace", e.target.value));
     $("runs").addEventListener("change", e => setS("runs", e.target.value));
+    $("blend").addEventListener("input", e => { $("blendVal").textContent = e.target.value + "%"; setS("blend", Number(e.target.value)); });
     $("chaos").addEventListener("input", e => { $("chaosVal").textContent = Number(e.target.value).toFixed(1); setS("chaos", e.target.value); });
     $("raceSel").addEventListener("change", e => { selectRace(e.target.value); $("resetMsg").textContent = ""; });
     $("styleSeg").addEventListener("click", e => {
