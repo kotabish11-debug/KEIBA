@@ -105,8 +105,38 @@ button { font: inherit; color: inherit; }
   border-radius: 4px; font-weight: 800; box-shadow: 0 2px 0 var(--shadow);
 }
 .cal b { font-family: var(--f-num); font-size: 17px; }
-.racepick { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); min-width: 0; }
-.racepick select { max-width: min(520px, 100%); }
+/* レース選択(日付 → 競馬場 → レース) */
+.picker { gap: 10px; }
+.pick-row { display: grid; grid-template-columns: 4.5em minmax(0, 1fr); gap: 10px; align-items: start; }
+.pick-k { font-size: 12.5px; color: var(--muted); padding-top: 7px; font-weight: 700; letter-spacing: .06em; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-btn {
+  display: inline-flex; align-items: baseline; gap: 6px; cursor: pointer;
+  font-size: 14px; font-weight: 700; padding: 5px 14px; border-radius: 5px;
+  border: 1px solid var(--line); background: linear-gradient(180deg, var(--row-hover), var(--row)); color: var(--ink);
+}
+.chip-btn:hover { border-color: var(--frame); }
+.chip-btn[aria-pressed="true"] { background: linear-gradient(180deg, var(--gold), var(--gold-deep)); color: var(--gold-ink); border-color: var(--frame); }
+.chip-btn.done:not([aria-pressed="true"]) { color: var(--muted); }
+.chip-btn i { font-style: normal; font-size: 11px; padding: 0 5px; border-radius: 3px; background: var(--good); color: var(--gold-ink); }
+.chip-btn small { font-size: 11.5px; opacity: .8; font-weight: 500; }
+.chip-btn em { font-style: normal; font-size: 12px; color: var(--gold); }
+.chip-btn[aria-pressed="true"] em { color: var(--gold-ink); }
+.race-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.race-btn {
+  display: flex; flex-direction: column; gap: 2px; text-align: left; cursor: pointer; min-width: 0;
+  padding: 6px 10px; border-radius: 5px; border: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--row-hover), var(--row)); color: var(--ink);
+}
+.race-btn:hover { border-color: var(--frame); }
+.race-btn[aria-pressed="true"] { border: 2px solid var(--gold); box-shadow: inset 0 0 0 1px var(--frame-hi); padding: 5px 9px; }
+.race-btn.starred { border-color: var(--gold-deep); }
+.rb-top { display: flex; align-items: center; gap: 6px; }
+.rb-no { font-family: var(--f-num); font-size: 15px; color: var(--gold); }
+.rb-time { margin-left: auto; font-family: var(--f-num); font-size: 12px; color: var(--muted); }
+.rb-name { font-weight: 700; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rb-sub { font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 760px) { .pick-row { grid-template-columns: minmax(0, 1fr); gap: 4px; } .pick-k { padding-top: 0; } .race-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); } }
 select, input[type="number"], input[type="text"] {
   font: inherit; color: var(--ink); background: var(--inset);
   border: 1px solid var(--line); border-radius: 4px; padding: 5px 8px;
@@ -413,9 +443,6 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   <div class="topbar">
     <div class="topbar-l">
       <span class="cal" id="cal"></span>
-      <label class="racepick" for="raceSel">レース選択
-        <select id="raceSel"></select>
-      </label>
     </div>
     <div class="topbar-r">
       <span class="sync" id="sync">自動更新に接続中…</span>
@@ -425,6 +452,16 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       <span class="status" id="status">計算中…</span>
     </div>
   </div>
+
+  <!-- レース選択: 日付 → 競馬場 → レース の順に選ぶ -->
+  <section class="win" aria-labelledby="h-pick">
+    <div class="win-h"><h2 id="h-pick">レース選択</h2><span class="sub">日付と競馬場を選び、レースを押す。★は自信の高いレース</span></div>
+    <div class="win-b picker">
+      <div class="pick-row"><span class="pick-k">日付</span><div class="chips" id="pickDate" role="group" aria-label="日付"></div></div>
+      <div class="pick-row"><span class="pick-k">競馬場</span><div class="chips" id="pickPlace" role="group" aria-label="競馬場"></div></div>
+      <div class="pick-row"><span class="pick-k">レース</span><div class="race-grid" id="pickRace" role="group" aria-label="レース"></div></div>
+    </div>
+  </section>
 
   <section class="win" aria-labelledby="raceName">
     <div class="win-b">
@@ -858,6 +895,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   function selectRace(id) {
     const keep = { budget: settings.budget, style: settings.style, evMin: settings.evMin, runs: settings.runs, blend: settings.blend };
     race = races[id] || BUILTIN[0];
+    picker.iso = race.iso; picker.place = race.place;
     roster = clone(race.horses);
     settings = Object.assign(defaultSettings(), keep);
     autoData = docs[race.id] || null;
@@ -1195,21 +1233,39 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     const t = new Date();
     $("cal").innerHTML = `<b>${t.getFullYear()}</b>年 <b>${t.getMonth() + 1}</b>月 第<b>${Math.ceil(t.getDate() / 7)}</b>週`;
   }
-  function renderHeader() {
+  // レース選択の状態(表示中の日付と競馬場)。レースを押すまでは、表示中のレースは変わらない
+  const picker = { iso: null, place: null };
+  const PLACE_ORDER = ["東京", "京都", "新潟", "中山", "阪神", "中京", "福島", "小倉", "札幌", "函館"];
+  function renderPicker() {
     const { up, past } = sortedRaces();
-    // 自信の高いレース(★)は名前の前に★を付ける
-    const opt = r => `<option value="${esc(r.id)}" ${r.id === race.id ? "selected" : ""}>${esc(`${r.star ? "★" : ""}${r.no}R ${r.name}${r.grade ? " " + r.grade : ""}${r.stage ? "・" + r.stage : ""}`)}</option>`;
-    // 日付・競馬場ごとにまとめる
-    const groups = (list, prefix) => {
-      const out = []; let cur = null;
-      for (const r of list) {
-        const label = `${prefix}${dateShort(r.iso)} ${r.place}`;
-        if (!cur || cur.label !== label) { cur = { label, items: [] }; out.push(cur); }
-        cur.items.push(r);
-      }
-      return out.map(g => `<optgroup label="${esc(g.label)}(${g.items.length}R${g.items.some(r => r.star) ? "・★" + g.items.filter(r => r.star).length : ""})">${g.items.map(opt).join("")}</optgroup>`).join("");
-    };
-    $("raceSel").innerHTML = groups(up, "") + groups(past, "終了 ");
+    const all = past.concat(up);
+    const today = todayIso();
+    const dates = [...new Set(all.map(r => r.iso).filter(Boolean))].sort();
+    if (!dates.length) return;
+    if (!picker.iso || !dates.includes(picker.iso)) picker.iso = dates.includes(race.iso) ? race.iso : (dates.find(d => d >= today) || dates[dates.length - 1]);
+    const onDate = all.filter(r => r.iso === picker.iso);
+    const places = [...new Set(onDate.map(r => r.place))].sort((a, b) => (PLACE_ORDER.indexOf(a) + 99) % 99 - (PLACE_ORDER.indexOf(b) + 99) % 99);
+    if (!picker.place || !places.includes(picker.place)) picker.place = (race.iso === picker.iso && places.includes(race.place)) ? race.place : places[0];
+    const stars = list => list.filter(r => r.star).length;
+    $("pickDate").innerHTML = dates.map(d => {
+      const list = all.filter(r => r.iso === d), s = stars(list);
+      return `<button type="button" class="chip-btn${d < today ? " done" : ""}${d === today ? " today" : ""}" data-date="${esc(d)}" aria-pressed="${d === picker.iso}">${esc(dateShort(d))}${d === today ? "<i>今日</i>" : ""}${s ? `<em>★${s}</em>` : ""}</button>`;
+    }).join("");
+    $("pickPlace").innerHTML = places.map(p => {
+      const list = onDate.filter(r => r.place === p), s = stars(list);
+      return `<button type="button" class="chip-btn" data-place="${esc(p)}" aria-pressed="${p === picker.place}">${esc(p)}<small>${list.length}R</small>${s ? `<em>★${s}</em>` : ""}</button>`;
+    }).join("");
+    const list = onDate.filter(r => r.place === picker.place).sort((a, b) => Number(a.no) - Number(b.no));
+    $("pickRace").innerHTML = list.map(r => {
+      const st = r.stage === "結果確定" ? "結果" : (r.stage || "");
+      return `<button type="button" class="race-btn${r.star ? " starred" : ""}" data-race="${esc(r.id)}" aria-pressed="${r.id === race.id}">` +
+        `<span class="rb-top"><b class="rb-no">${r.star ? "★" : ""}${esc(String(r.no))}R</b>${gradeBadge(r.grade, true)}<span class="rb-time">${esc((r.time || "").replace("発走", ""))}</span></span>` +
+        `<span class="rb-name">${esc(r.name)}</span>` +
+        `<span class="rb-sub">${esc(r.course.replace(/\(.*\)/, ""))}${st ? "・" + esc(st) : ""}</span></button>`;
+    }).join("");
+  }
+  function renderHeader() {
+    renderPicker();
     $("rPlace").textContent = race.place;
     $("rNo").textContent = race.no + "R";
     $("raceName").innerHTML = `${race.star ? '<span class="star" title="自信の高いレース">★</span>' : ""}<span class="gold-text">${esc(race.name)}</span>${gradeBadge(race.grade)}`;
@@ -1831,7 +1887,9 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     $("runs").addEventListener("change", e => setS("runs", e.target.value));
     $("blend").addEventListener("input", e => { $("blendVal").textContent = e.target.value + "%"; setS("blend", Number(e.target.value)); });
     $("chaos").addEventListener("input", e => { $("chaosVal").textContent = Number(e.target.value).toFixed(1); setS("chaos", e.target.value); });
-    $("raceSel").addEventListener("change", e => { selectRace(e.target.value); $("resetMsg").textContent = ""; });
+    $("pickDate").addEventListener("click", e => { const b = e.target.closest("[data-date]"); if (!b) return; picker.iso = b.dataset.date; picker.place = null; renderPicker(); });
+    $("pickPlace").addEventListener("click", e => { const b = e.target.closest("[data-place]"); if (!b) return; picker.place = b.dataset.place; renderPicker(); });
+    $("pickRace").addEventListener("click", e => { const b = e.target.closest("[data-race]"); if (!b) return; selectRace(b.dataset.race); $("resetMsg").textContent = ""; });
     $("styleSeg").addEventListener("click", e => {
       const b = e.target.closest("button"); if (!b) return;
       setS("style", b.dataset.style);
