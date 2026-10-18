@@ -534,9 +534,9 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
         </div>
         <div class="field"><label for="runs">シミュレーション回数</label>
           <select id="runs">
-            <option value="5000">5,000回(速い)</option>
-            <option value="20000">20,000回</option>
-            <option value="50000">50,000回(精密)</option>
+            <option value="50000">50,000回(標準)</option>
+            <option value="100000">100,000回</option>
+            <option value="200000">200,000回(精密)</option>
           </select>
         </div>
       </div>
@@ -701,6 +701,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
 
   // ---------------- 状態 ----------------
   const SEL_KEY = "keiba-sim-selected";
+  const MIN_RUNS = 50000;
   let races = {};          // レースID → レース定義(最初から入っているもの + 自動で届いたもの)
   let docs = {};           // レースID → 自動更新で届いたデータ(db: races/<id>)
   BUILTIN.forEach(r => { races[r.id] = r; });
@@ -709,9 +710,11 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   let roster = clone(race.horses);
   let horses = roster;
   function defaultSettings() {
-    return { budget: 3000, style: "balance", evMin: "1.1", going: String(race.goingDefault || 0), manGoing: false, pace: "auto", chaos: race.chaos || 8, runs: "20000", blend: 60 };
+    return { budget: 3000, style: "balance", evMin: "1.1", going: String(race.goingDefault || 0), manGoing: false, pace: "auto", chaos: race.chaos || 8, runs: String(MIN_RUNS), blend: 60 };
   }
   let settings = defaultSettings();
+  // シミュレーション回数の下限(ユーザーの指定)。以前に保存した5,000回・20,000回はここまで引き上げる
+  function fixRuns() { if (!(Number(settings.runs) >= MIN_RUNS)) settings.runs = String(MIN_RUNS); }
   let sim = null;
   let lastMarks = [];
   let autoData = null;   // 表示中のレースの自動更新データ
@@ -832,6 +835,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     settings = Object.assign(defaultSettings(), keep);
     autoData = docs[race.id] || null;
     load();
+    fixRuns();
     applyAuto();
     try { localStorage.setItem(SEL_KEY, race.id); } catch (e) {}
     renderHeader(); renderConditions(); renderEdit(); renderAutoLog(); run(0);
@@ -903,7 +907,8 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     const sigma = Number(settings.chaos) + going * 0.6;
     const pp = paceProbs();
     const fixed = baseFixed(going);
-    const model = runSim(fixed, sigma, pp, Number(settings.runs));
+    const runs = Math.max(MIN_RUNS, Number(settings.runs) || 0);
+    const model = runSim(fixed, sigma, pp, runs);
     const wMk = blendWeight();
     model.modelWin = model.win;
     model.mkWin = canBlend() ? marketWin() : null;
@@ -930,7 +935,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       }
       if (err < 0.04) break;
     }
-    const out = runSim(adj, sigma, pp, Number(settings.runs));
+    const out = runSim(adj, sigma, pp, runs);
     out.modelWin = model.win;
     out.mkWin = model.mkWin;
     out.wMk = wMk;
@@ -1385,7 +1390,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     lastMarks = m;
     const idx = [...Array(s.n).keys()].sort((a, b) => s.win[b] - s.win[a]);
     const maxW = Math.max(...s.win);
-    $("predSub").textContent = `${Number(settings.runs).toLocaleString()}回のシミュレーション・馬場${GOING_LABEL[settings.going]}・波乱度${Number(settings.chaos).toFixed(1)}・` +
+    $("predSub").textContent = `${s.N.toLocaleString()}回のシミュレーション・馬場${GOING_LABEL[settings.going]}・波乱度${Number(settings.chaos).toFixed(1)}・` +
       (s.wMk ? `オッズの比重${Math.round(s.wMk * 100)}%` : (canBlend() ? "能力値のみ" : "能力値のみ(実際のオッズが未発表)"));
     $("predTable").tBodies[0].innerHTML = idx.map(i => {
       const h = horses[i], ev = s.win[i] * oddsOf(h);
