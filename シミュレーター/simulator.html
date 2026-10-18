@@ -121,6 +121,8 @@ select:focus-visible, input:focus-visible, button:focus-visible { outline: 2px s
 .status { font-size: 12.5px; color: var(--muted); }
 .next-up { font-size: 12.5px; padding: 2px 10px; border-radius: 999px; background: var(--inset); border: 1px solid var(--frame); color: var(--ink); cursor: help; }
 .next-up b { color: var(--gold); font-family: var(--f-num); font-weight: 700; }
+.btn.manual { padding: 3px 14px; font-size: 13px; }
+.btn.manual:disabled { opacity: .55; cursor: default; }
 .sale { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; font-size: 13px; padding: 8px 14px; border-radius: 6px; background: var(--inset); border: 1px solid var(--line); }
 .sale .st { font-size: 14px; padding: 1px 10px; border-radius: 3px; background: var(--row-hover); }
 .sale.open { border-color: var(--good); }
@@ -407,6 +409,8 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     <div class="topbar-r">
       <span class="sync" id="sync">自動更新に接続中…</span>
       <span class="next-up" id="nextUp"></span>
+      <button type="button" class="btn manual" id="manualBtn" disabled title="最新のデータを読み直し、Claudeに枠順・オッズ・馬場などの取り直しを依頼します">手動更新</button>
+      <span class="status" id="manualMsg"></span>
       <span class="status" id="status">計算中…</span>
     </div>
   </div>
@@ -1200,9 +1204,10 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   }
   // 定期実行(クラウドのルーティン)の予定。日本時間。曜日は 0=日〜6=土
   // ルーティンの時刻を変えたら、ここも直す(シミュレーター/自動更新の手順.md)
+  const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
   const UPDATE_SCHEDULE = [
-    { label: "枠順・オッズ・馬場・馬体重", days: [0, 1, 4, 5, 6], times: ["09:50", "11:50", "13:50", "15:50", "17:50"] },
-    { label: "出走馬・判断材料・能力値", days: [4, 5], times: ["18:20"] },
+    { label: "枠順・オッズ・馬場・馬体重(手動更新の依頼もここで処理)", days: ALL_DAYS, times: ["07:50", "09:50", "11:50", "13:50", "15:50", "17:50", "19:50", "21:50"] },
+    { label: "JRAの新情報(特別登録・出走馬・結果)・判断材料・能力値", days: ALL_DAYS, times: ["08:20", "18:20"] },
     { label: "出走馬・判断材料・能力値", days: [5], times: ["12:20"] },
     { label: "結果・翌週の特別登録・判断材料", days: [0], times: ["19:20"] }
   ];
@@ -1798,6 +1803,61 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     $("card").addEventListener("close", () => { cardStack.length = 0; });
   }
 
+  // 手動更新: dbを読み直し、Claudeの定期実行に「今すぐ取り直して」と依頼する(db: requests/manual)
+  // ページからクラウドの処理を直接は動かせないので、依頼は次の定期実行(2時間おき)が拾って処理する
+  let autoDb = null;
+  let applyRaces = null;
+  let manualDoc = null;
+  function nowJstIso() {
+    const j = new Date(Date.now() + JST);
+    return j.toISOString().replace(/\.\d+Z$/, "+09:00");
+  }
+  function renderManual() {
+    const el = $("manualMsg");
+    const d = manualDoc;
+    const btn = $("manualBtn");
+    if (!d) { el.textContent = ""; return; }
+    const n = nextUpdate(new Date());
+    if (d.status === "pending") {
+      el.textContent = `更新を依頼中(${fmtTime(d.requestedAt)})・${n ? fmtJst(n.at) + "の定期実行で取得" : "次の定期実行で取得"}`;
+      btn.textContent = "依頼済み";
+    } else if (d.status === "working") {
+      el.textContent = "Claudeが取得中…";
+      btn.textContent = "取得中";
+    } else if (d.status === "done") {
+      el.textContent = `手動更新 完了 ${fmtTime(d.doneAt)}${d.summary ? "・" + d.summary : ""}`;
+      btn.textContent = "手動更新";
+    }
+    // 処理されないまま3時間たった依頼は、もう一度出せるようにする
+    const age = Date.now() - new Date(d.requestedAt).getTime();
+    const busy = (d.status === "pending" || d.status === "working") && !(age > 3 * 3600 * 1000);
+    if (!busy && d.status !== "done") btn.textContent = "手動更新";
+    btn.disabled = !autoDb || busy;
+  }
+  function watchManual(db) {
+    try {
+      db.doc("requests/manual").onSnapshot(s => { manualDoc = s.exists ? s.data() : null; renderManual(); }, () => {});
+    } catch (e) {}
+  }
+  async function manualUpdate() {
+    const btn = $("manualBtn");
+    if (!autoDb) { $("manualMsg").textContent = "claude.aiで開いてサインインすると使えます"; return; }
+    btn.disabled = true;
+    $("manualMsg").textContent = "最新のデータを読み直しています…";
+    try {
+      const snap = await autoDb.collection("races").get();
+      if (applyRaces) applyRaces(snap);
+    } catch (e) {}
+    try {
+      await autoDb.doc("requests/manual").set({ status: "pending", requestedAt: nowJstIso(), from: "simulator", raceId: race.id });
+    } catch (e) {
+      $("manualMsg").textContent = "読み直しました(更新の依頼はオーナーだけができます)";
+      btn.disabled = false;
+      return;
+    }
+    renderManual();
+  }
+
   // 自動更新: Claudeが定期的に取得した最新情報(枠順・オッズ・馬場・天気・馬体重・取消)を受け取る
   async function connectAuto() {
     if (!window.claude || typeof window.claude.use !== "function") {
@@ -1807,10 +1867,13 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     let db = null;
     try { db = await window.claude.use("db"); } catch (e) { db = null; }
     if (!db) { setSync("off", "自動更新なし(サインインが必要)"); return; }
+    autoDb = db;
+    $("manualBtn").disabled = false;
+    watchManual(db);
     let first = true;
     try {
       // races コレクション全体を購読する。新しいレースのデータが届くと、レース一覧に自動で加わる
-      db.collection("races").onSnapshot(snap => {
+      db.collection("races").onSnapshot(applyRaces = snap => {
         const before = JSON.stringify(docs[race.id] || null);
         const known = new Set(Object.keys(races));
         docs = {};
@@ -1838,7 +1901,8 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
 
   bind();
   renderNextUpdate();
-  setInterval(() => { renderNextUpdate(); renderSale(); }, 60 * 1000);
+  setInterval(() => { renderNextUpdate(); renderSale(); renderManual(); }, 60 * 1000);
+  $("manualBtn").addEventListener("click", manualUpdate);
   renderCal();
   selectRace(defaultRaceId());
   loadProfiles();
