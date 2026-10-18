@@ -122,6 +122,17 @@ select:focus-visible, input:focus-visible, button:focus-visible { outline: 2px s
 .next-up { font-size: 12.5px; padding: 2px 10px; border-radius: 999px; background: var(--inset); border: 1px solid var(--frame); color: var(--ink); cursor: help; }
 .next-up b { color: var(--gold); font-family: var(--f-num); font-weight: 700; }
 .btn.manual { padding: 3px 14px; font-size: 13px; }
+.race-name .star { color: var(--gold); font-size: .9em; margin-right: 2px; text-shadow: 0 0 10px rgba(239, 210, 122, .6); }
+.star-note { font-size: 13px; padding: 8px 14px; border-radius: 6px; background: var(--inset); border: 1px solid var(--gold-deep); }
+.star-note b { color: var(--gold); margin-right: 8px; }
+.review { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 6px; background: var(--inset); border: 1px solid var(--frame); font-size: 13.5px; }
+.review h3 { font-size: 14px; color: var(--gold); letter-spacing: .06em; }
+.review .k { display: inline-block; min-width: 4.5em; color: var(--muted); font-size: 12.5px; margin-right: 6px; }
+.rv-row { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; }
+.rv-row b { color: var(--gold); font-family: var(--f-num); }
+.rv-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 18px; }
+.rv-cols ul { margin: 4px 0 0; padding-left: 18px; line-height: 1.7; }
+@media (max-width: 760px) { .rv-cols { grid-template-columns: minmax(0, 1fr); } }
 .btn.manual:disabled { opacity: .55; cursor: default; }
 .sale { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; font-size: 13px; padding: 8px 14px; border-radius: 6px; background: var(--inset); border: 1px solid var(--line); }
 .sale .st { font-size: 14px; padding: 1px 10px; border-radius: 3px; background: var(--row-hover); }
@@ -423,6 +434,8 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
         <div class="race-meta" id="raceMeta"></div>
       </div>
       <div class="sale" id="saleInfo" hidden></div>
+      <div class="star-note" id="starNote" hidden></div>
+      <div class="review" id="reviewBox" hidden></div>
       <div class="notice" id="oddsNotice" hidden></div>
       <div class="auto-log" id="autoLog" hidden></div>
     </div>
@@ -582,7 +595,11 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       <li>券種ごとの推定オッズは、単勝オッズから市場の予想確率を出して計算した目安です(JRAの控除率を反映)。実際のオッズとはずれます。</li>
       <li>馬カードの血統・戦績は「馬情報」フォルダーの出走馬データ(スポーツナビ競馬)から、騎手カードの成績は2026年のJRA重賞の全着順(JRA公式)から作っています。騎手の成績は重賞だけの集計です。</li>
       <li>能力の数値とランク(S〜G)は、このデータを元にClaudeが付けた評価です。予想は的中を保証しません。</li>
+      <li>東京・京都・新潟の重賞以外のレースも、すべて自動で入ります。これらの能力値は、競馬ラボのΩ指数・距離とコースの成績・前走・騎手のコース連対率から自動で計算しています(重賞はClaudeが判断材料を見て付けます)。</li>
+      <li>レースが終わると、予想と結果を比べた「振り返り」(違った点・次に外さないために)がそのレースに付きます。振り返りの記録から、能力値の重みと★の基準を毎回自動で調整します。</li>
+      <li>★は、◎が3着以内に入る確率が基準以上で、しかも1番人気のレースです。★のレースで◎が3着を外した割合が1割を超えると、基準が自動で厳しくなります。</li>
     </ul>
+    <p class="small" id="modelInfo"></p>
   </section>
 </div>
 
@@ -600,7 +617,9 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   "use strict";
 
   // ---------------- データ ----------------
+  // 能力値の重み。結果の振り返りから最適化した値が db の config/model に届くと置き換わる
   const WEIGHTS = { jisseki: 0.35, kyori: 0.15, course: 0.15, choshi: 0.20, kishu: 0.15 };
+  let MODEL = { starTop3: 0.8 };
   const FACTORS = [["jisseki", "実績"], ["kyori", "距離"], ["course", "コース"], ["choshi", "調子"], ["kishu", "騎手"]];
   const STYLES_RUN = ["逃げ", "先行", "差し", "追込"];
   const PACE_ADJ = {
@@ -673,7 +692,8 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     const db = defaultBias(d);
     const num = (v, def) => (isFinite(Number(v)) && v !== null && v !== "" ? Number(v) : def);
     return {
-      id, iso: d.date, stage: d.stage || "", fromDb: true,
+      id, iso: d.date, stage: d.stage || "", fromDb: true, auto: !!d.auto,
+      star: !!d.star, starProb: num(d.starProb, null), starHonmei: d.starHonmei ? String(d.starHonmei) : "",
       name: String(d.name || id), grade: String(d.grade || ""), place: String(d.place || ""), no: num(d.no, ""),
       date: dateLong(d.date), time: d.time ? d.time + "発走" : "",
       course: `${d.surface || "芝"} ${d.dir || ""} ${num(d.dist, "")}m${d.courseNote ? "(" + d.courseNote + ")" : ""}`.replace(/\s+/g, " "),
@@ -821,8 +841,11 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   function sortedRaces() {
     const today = todayIso();
     const list = Object.values(races);
-    const up = list.filter(r => (r.iso || "") >= today).sort((a, b) => (a.iso + a.place + a.no).localeCompare(b.iso + b.place + b.no));
-    const past = list.filter(r => (r.iso || "") < today).sort((a, b) => (b.iso || "").localeCompare(a.iso || ""));
+    const key = r => (r.iso || "") + (r.place || "") + String(r.no || 0).padStart(2, "0");
+    const up = list.filter(r => (r.iso || "") >= today).sort((a, b) => key(a).localeCompare(key(b)));
+    // 終わったレースは直近7日分だけ一覧に出す(全レースを追加しているため)
+    const weekAgo = new Date(Date.now() + JST - 7 * 86400000).toISOString().slice(0, 10);
+    const past = list.filter(r => (r.iso || "") < today && (r.iso || "") >= weekAgo).sort((a, b) => key(b).localeCompare(key(a)));
     return { up, past };
   }
   function defaultRaceId() {
@@ -1174,15 +1197,25 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   }
   function renderHeader() {
     const { up, past } = sortedRaces();
-    const opt = r => `<option value="${esc(r.id)}" ${r.id === race.id ? "selected" : ""}>${esc(`${dateShort(r.iso)} ${r.place}${r.no}R ${r.name} ${r.grade}${r.stage ? "・" + r.stage : ""}`)}</option>`;
-    $("raceSel").innerHTML =
-      (up.length ? `<optgroup label="これからのレース(${up.length})">${up.map(opt).join("")}</optgroup>` : "") +
-      (past.length ? `<optgroup label="終わったレース">${past.map(opt).join("")}</optgroup>` : "");
+    // 自信の高いレース(★)は名前の前に★を付ける
+    const opt = r => `<option value="${esc(r.id)}" ${r.id === race.id ? "selected" : ""}>${esc(`${r.star ? "★" : ""}${r.no}R ${r.name}${r.grade ? " " + r.grade : ""}${r.stage ? "・" + r.stage : ""}`)}</option>`;
+    // 日付・競馬場ごとにまとめる
+    const groups = (list, prefix) => {
+      const out = []; let cur = null;
+      for (const r of list) {
+        const label = `${prefix}${dateShort(r.iso)} ${r.place}`;
+        if (!cur || cur.label !== label) { cur = { label, items: [] }; out.push(cur); }
+        cur.items.push(r);
+      }
+      return out.map(g => `<optgroup label="${esc(g.label)}(${g.items.length}R${g.items.some(r => r.star) ? "・★" + g.items.filter(r => r.star).length : ""})">${g.items.map(opt).join("")}</optgroup>`).join("");
+    };
+    $("raceSel").innerHTML = groups(up, "") + groups(past, "終了 ");
     $("rPlace").textContent = race.place;
     $("rNo").textContent = race.no + "R";
-    $("raceName").innerHTML = `<span class="gold-text">${esc(race.name)}</span>${gradeBadge(race.grade)}`;
+    $("raceName").innerHTML = `${race.star ? '<span class="star" title="自信の高いレース">★</span>' : ""}<span class="gold-text">${esc(race.name)}</span>${gradeBadge(race.grade)}`;
     renderMeta();
     renderSale();
+    renderReview();
   }
   function renderMeta() {
     const d = autoData || {};
@@ -1206,7 +1239,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   // ルーティンの時刻を変えたら、ここも直す(シミュレーター/自動更新の手順.md)
   const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
   const UPDATE_SCHEDULE = [
-    { label: "枠順・オッズ・馬場・馬体重(手動更新の依頼もここで処理)", days: ALL_DAYS, times: ["07:50", "09:50", "11:50", "13:50", "15:50", "17:50", "19:50", "21:50"] },
+    { label: "全レース・★・オッズ・馬場・結果の振り返り(手動更新の依頼もここで処理)", days: ALL_DAYS, times: ["07:50", "09:50", "11:50", "13:50", "15:50", "17:50", "19:50", "21:50"] },
     { label: "JRAの新情報(特別登録・出走馬・結果)・判断材料・能力値", days: ALL_DAYS, times: ["08:20", "18:20"] },
     { label: "出走馬・判断材料・能力値", days: [5], times: ["12:20"] },
     { label: "結果・翌週の特別登録・判断材料", days: [0], times: ["19:20"] }
@@ -1306,6 +1339,37 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     const el = $("sync");
     el.className = "sync " + state;
     el.textContent = text;
+  }
+  // 最適化の状況(ページ下の説明に出す)
+  function renderModel() {
+    const el = $("modelInfo");
+    if (!el || !MODEL || !MODEL.weights) return;
+    const st = MODEL.stats || {};
+    const pct = v => Math.round(v * 100) + "%";
+    el.innerHTML = `能力値の重み(結果から自動調整・${esc(fmtTime(MODEL.updatedAt))}): 実績${pct(WEIGHTS.jisseki)} 距離${pct(WEIGHTS.kyori)} コース${pct(WEIGHTS.course)} 調子${pct(WEIGHTS.choshi)} 騎手${pct(WEIGHTS.kishu)}` +
+      (st.races ? `。これまでの成績: ${st.races}レースで◎の勝率${st.honmeiWin}%・3着以内${st.honmeiTop3}%` : "") +
+      (st.starRaces ? `、★レース${st.starRaces}回で◎の3着以内${st.starTop3}%` : "") + `。★の基準: ◎の3着以内率${pct(MODEL.starTop3 || 0.8)}以上`;
+  }
+  // ★の説明と、レース後の振り返り(予想と結果の比較・次への改善)
+  function renderReview() {
+    const sn = $("starNote");
+    if (race.star) {
+      sn.innerHTML = `<b>★ 自信の高いレース</b>◎${esc(race.starHonmei || "")}が3着以内に入る確率 <b class="num">${race.starProb != null ? Math.round(race.starProb * 100) + "%" : "-"}</b>(基準 ${Math.round((MODEL.starTop3 || 0.8) * 100)}%以上、かつ1番人気)。高い確率でも絶対ではありません`;
+      sn.hidden = false;
+    } else sn.hidden = true;
+    const el = $("reviewBox");
+    const v = (autoData || {}).review;
+    if (!v) { el.hidden = true; return; }
+    const pos = r => r == null ? "?" : r;
+    el.innerHTML =
+      `<h3>予想と結果の振り返り${v.star ? "(★レース)" : ""}</h3>` +
+      `<div class="rv-row"><span class="k">予想</span>${(v.marks || []).map(m => `<span>${esc(m.mark)}${esc(m.name)} <b>${pos(m.rank)}着</b></span>`).join("")}</div>` +
+      `<div class="rv-row"><span class="k">結果</span>${(v.top3 || []).map(t => `<span>${t.rank}着 ${esc(t.name)} <small>${t.pop != null ? t.pop + "番人気" : ""}・予想${pos(t.predRank)}位</small></span>`).join("")}</div>` +
+      `<div class="rv-cols"><div><span class="k">違った点</span><ul>${(v.diff || []).map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>` +
+      `<div><span class="k">次に外さないために</span><ul>${(v.next || []).map(x => `<li>${esc(x)}</li>`).join("")}</ul></div></div>` +
+      (Array.isArray(v.claude) && v.claude.length ? `<div><span class="k">Claudeの分析</span><ul>${v.claude.map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>` : "") +
+      `<div class="muted small">${esc(v.basis || "")}。振り返りは毎回の記録にため、能力値の重みと★の基準を自動で調整しています</div>`;
+    el.hidden = false;
   }
   function renderAutoLog() {
     const d = autoData;
@@ -1870,6 +1934,22 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     autoDb = db;
     $("manualBtn").disabled = false;
     watchManual(db);
+    // 結果の振り返りから最適化した重みと★の基準
+    try {
+      db.doc("config/model").onSnapshot(s => {
+        const m = s.exists ? s.data() : null;
+        if (!m || !m.weights) return;
+        let changed = false;
+        for (const k of Object.keys(WEIGHTS)) {
+          const v = Number(m.weights[k]);
+          if (isFinite(v) && v > 0 && v < 1 && v !== WEIGHTS[k]) { WEIGHTS[k] = v; changed = true; }
+        }
+        MODEL = m;
+        renderModel();
+        if (changed) { renderEdit(); run(0); }
+        renderReview();
+      }, () => {});
+    } catch (e) {}
     let first = true;
     try {
       // races コレクション全体を購読する。新しいレースのデータが届くと、レース一覧に自動で加わる
