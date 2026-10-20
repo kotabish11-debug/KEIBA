@@ -13,7 +13,7 @@ my @hs = grep { !$_->{scratched} } @{$race->{horses} || []};
 my $n = @hs; if ($n < 3) { print encode_json({ star => JSON::PP::false }); exit }
 my $small = ($race->{place} // '') =~ /^(中山|福島|小倉|函館|札幌)$/ || ($race->{courseNote} // '') =~ /内回り/;
 my ($bias, $draw) = ($race->{surface} // '') eq '障' ? ({ '逃げ' => 1, '先行' => 1, '差し' => 0, '追込' => -1.5 }, 0.3)
-  : ($race->{surface} // '') eq 'ダ' ? ({ '逃げ' => 1.5, '先行' => 1.5, '差し' => -0.5, '追込' => -2 }, 0.5)
+  : ($race->{surface} // '') eq 'ダ' ? ({ '逃げ' => 1.5, '先行' => 1.5, '差し' => -0.5, '追込' => -2 }, -0.2)
   : $small ? ({ '逃げ' => 1.5, '先行' => 1.5, '差し' => 0, '追込' => -2.5 }, 0.8) : ({ '逃げ' => 0, '先行' => 0.5, '差し' => 0.5, '追込' => 0 }, 0.4);
 $bias = $race->{courseBias} if ref $race->{courseBias} eq 'HASH'; $draw = $race->{drawBias} if defined $race->{drawBias};
 my $going = $race->{going} // 0; my $total = scalar @{$race->{horses}};
@@ -46,6 +46,12 @@ if ($real) {
 }
 my ($hon) = sort { $pw[$b] <=> $pw[$a] } 0 .. $n - 1;
 my ($fav) = sort { ($hs[$a]{odds} // 999) <=> ($hs[$b]{odds} // 999) } 0 .. $n - 1;
-my $star = ($p3[$hon] >= $thr && $hon == $fav) ? 1 : 0;
-print JSON::PP->new->canonical->encode({ star => ($star ? JSON::PP::true : JSON::PP::false), starProb => int($p3[$hon] * 1000 + 0.5) / 1000,
+# 1番人気の成績が平均より明らかに悪い条件(過去3年・約1万レース)に当てはまれば★にしない
+my $fh = $hs[$fav]; my @risk;
+push @risk, '追込' if ($fh->{style} // '') eq '追込';
+push @risk, '前走逃げて好走' if ($fh->{note} // '') =~ /前走逃げて好走/;
+push @risk, '馬体重420kg未満' if $fh->{weight} && $fh->{weight} < 420;
+push @risk, '芝の重・不良' if ($race->{surface} // '') eq '芝' && $going >= 2;
+my $star = ($p3[$hon] >= $thr && $hon == $fav && !@risk) ? 1 : 0;
+print JSON::PP->new->canonical->encode({ star => ($star ? JSON::PP::true : JSON::PP::false), starProb => int($p3[$hon] * 1000 + 0.5) / 1000, favRisk => \@risk,
   honmei => $hs[$hon]{name}, threshold => $thr, oddsReal => ($real ? JSON::PP::true : JSON::PP::false) }), "\n";

@@ -610,6 +610,10 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
         <ul class="kinds-notes">
           <li>払戻率: 売上のうち、当たった人に戻る割合(JRAの規定)。残りは控除される。払戻率が高い単勝・複勝ほど、長く買ったときに損をしにくい</li>
           <li>買い方ごとの券種: 堅実=単勝・複勝・ワイド・馬連 / バランス=左に加えて馬単・3連複 / 高配当=馬連・馬単・3連複・3連単</li>
+          <li>ワイドを買うときは、同じ2頭の馬連を「おさえ」として少額で添えます(期待値1以上のときだけ)。ワイドが当たるとき、その2頭がそのまま1・2着のことも多いためです</li>
+          <li>単勝は4〜9.9倍の馬を中心に選びます。3.9倍以下と10倍以上は、期待値が条件より0.2以上高いときだけ買い目に入れます</li>
+          <li>予算が少ないときは点数を絞ります(1000円までは2点、2000円までは3点)。少ない予算を薄く広げると、当たっても増えにくいためです</li>
+          <li>「オッズの断層」は、単勝を人気順に並べて隣同士が2倍以上離れる所から、レースの型を示します(1番人気が抜けて強い=見送り向き/抜けているが不安=逆転候補が狙い目/上位2〜3頭が抜けている=その中で比べる/断層なしの混戦=見送り向き)</li>
           <li>ほかに枠連(同じ枠の馬をまとめて買う馬連)と応援馬券(同じ馬の単勝と複勝のセット)もあるが、このシミュレーターでは使わない</li>
         </ul>
       </details>
@@ -865,17 +869,82 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   function todayIso() { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`; }
 
   // コースの形から、脚質・枠の有利不利を決める(データに書いてあればそちらを使う)
+  // 芝スタートのダート(外枠ほど芝を長く走れる → 外枠有利)
+  const TURF_START_DIRT = ["東京ダ1600", "中山ダ1200", "阪神ダ1400", "阪神ダ2000", "京都ダ1400", "中京ダ1400", "新潟ダ1200", "福島ダ1150"];
+  // 1コーナーまでが短い(内枠の逃げ・先行が有利) / 同じ場でスタートが約200m後ろで長い(差しが届きやすい)
+  const FIRST_CORNER_SHORT = ["中山芝1800", "中京芝2000", "中京ダ1800", "京都ダ1800", "阪神ダ1800", "東京芝2000"];
+  const FIRST_CORNER_LONG = ["中山芝2000", "中京芝2200", "中京ダ1900", "京都ダ1900", "阪神ダ2000"];
+  // コースごとの傾向が分かっているコース(draw: プラス=内枠有利、マイナス=外枠有利)。出典は 馬情報/競馬場の特徴_JRA10場.md
+  const COURSE_PRESET = {
+    "阪神芝1200": { bias: { "逃げ": 2.5, "先行": 1.5, "差し": -0.5, "追込": -2.5 }, draw: 0.8 },  // 1角まで短い。逃げ・内枠
+    "阪神芝1400": { bias: { "逃げ": 0.5, "先行": 1.5, "差し": 0, "追込": -1.5 }, draw: 0.6 },     // 逃げ切りは減るが前残り・内枠。8枠不振
+    "阪神芝1600": { bias: { "逃げ": 1, "先行": 1, "差し": 0.5, "追込": -1.5 }, draw: 0.2 },       // 外回りでもペースが落ち着き前が粘る。追込は決まらない
+    "阪神芝1800": { bias: { "逃げ": 0.5, "先行": 0.5, "差し": 0.5, "追込": -0.5 }, draw: 0 },     // 1角まで600m超。枠の差なし。実力どおり
+    "阪神芝2000": { bias: { "逃げ": 1, "先行": 1.5, "差し": 0, "追込": -1.5 }, draw: 0.6 },       // 内回り・1角まで短い。1角5番手以内
+    "阪神芝2200": { bias: { "逃げ": -0.5, "先行": 0.5, "差し": 1, "追込": 0 }, draw: 0.2 },       // 1角まで長くロングスパート。差しが届く
+    "阪神芝2400": { bias: { "逃げ": -1, "先行": 0, "差し": 1.5, "追込": 0.5 }, draw: 0.1 },       // 外回り・瞬発力勝負。差し有利
+    "阪神ダ1200": { bias: { "逃げ": 1.5, "先行": 1.5, "差し": -1, "追込": -3 }, draw: -0.4 },     // 前有利・外枠。差しは最も届かない
+    "阪神ダ1400": { bias: { "逃げ": -0.5, "先行": 0.5, "差し": 1, "追込": 0 }, draw: -0.5 },      // 芝スタートで外枠。ペースが速く差しが届く
+    "阪神ダ1800": { bias: { "逃げ": 2.5, "先行": 1.5, "差し": -1, "追込": -3 }, draw: -0.2 },     // 4角先頭が強い。差しはほぼ届かない
+    "阪神ダ2000": { bias: { "逃げ": 0, "先行": 1.5, "差し": 0.5, "追込": -1 }, draw: -0.4 },      // 芝スタート・外枠。逃げ切りよりも好位
+    "東京芝1400": { bias: { "逃げ": 1, "先行": 1.5, "差し": 0, "追込": -1 }, draw: 0.3 },         // 序盤が落ち着き前が有利
+    "東京芝1600": { bias: { "逃げ": 0, "先行": 0.5, "差し": 0.5, "追込": -0.5 }, draw: 0.2 },     // 1400より差しが決まる。地力勝負
+    "東京芝1800": { bias: { "逃げ": 0.5, "先行": 0.5, "差し": 0.5, "追込": -0.5 }, draw: 0.2 },   // 脚質の偏りが小さい。速い上がりが要る
+    "東京芝2000": { bias: { "逃げ": 1.5, "先行": 1.5, "差し": 0, "追込": -1.5 }, draw: 1.0 },     // 1角まで約130m。外枠は外に振られる。内枠の逃げ・先行
+    "東京芝2400": { bias: { "逃げ": 0.5, "先行": 0.5, "差し": 0.5, "追込": 0 }, draw: 0.4 },      // 最もフェア。内枠
+    "東京芝2500": { bias: { "逃げ": -0.5, "先行": 0, "差し": 1, "追込": 0.5 }, draw: 0.2 },       // スタミナ勝負で差し・追込
+    "東京ダ1300": { bias: { "逃げ": 2, "先行": 2, "差し": -1, "追込": -2.5 }, draw: 0.4 },        // 1角まで短い。内枠の逃げ・先行
+    "東京ダ1400": { bias: { "逃げ": 0, "先行": 0.5, "差し": 1, "追込": 0.5 }, draw: 0 },          // ダートスタートで枠の差なし。差し・追込
+    "東京ダ1600": { bias: { "逃げ": 0.5, "先行": 1, "差し": 0.5, "追込": -1 }, draw: -0.5 },      // 芝スタートで外枠
+    "東京ダ2100": { bias: { "逃げ": 1.5, "先行": 1.5, "差し": -0.5, "追込": -2 }, draw: 0.3 },     // スローになりやすく前有利。タフ
+    "京都芝1200": { bias: { "逃げ": 2.5, "先行": 2, "差し": -0.5, "追込": -2.5 }, draw: 0.9 },     // 内回り・序盤が上り。内枠の先行
+    "京都芝1400": { bias: { "逃げ": 0.5, "先行": 1, "差し": 0.5, "追込": -1 }, draw: 0.3 },        // 外回り(下級条件は内回り)
+    "京都芝1600": { bias: { "逃げ": -0.5, "先行": 0.5, "差し": 1, "追込": 0 }, draw: 0.2 },        // 外回り。1角まで約710mで枠の差は小さい。下りから長く脚を使う馬
+    "京都芝1800": { bias: { "逃げ": -0.5, "先行": 0, "差し": 1, "追込": 0.5 }, draw: 0 },          // 1角まで約900m。ペースが上がり差し
+    "京都芝2000": { bias: { "逃げ": 1.5, "先行": 1.5, "差し": 0, "追込": -1.5 }, draw: 0.6 },      // 内回り・1角まで短い。内枠の先行
+    "京都芝2200": { bias: { "逃げ": 0, "先行": 0.5, "差し": 1, "追込": 0 }, draw: 0.2 },           // 外回り。長くいい脚を使える馬
+    "京都芝2400": { bias: { "逃げ": -1, "先行": 1, "差し": 0.5, "追込": -1 }, draw: 0.2 },         // 逃げは苦戦、後方一気も届きにくい
+    "京都芝3000": { bias: { "逃げ": 0, "先行": 0.5, "差し": 0.5, "追込": -1 }, draw: 0.2 },        // コーナー6回だが距離が長く道中で位置を取り直せる。折り合い
+    "京都芝3200": { bias: { "逃げ": -0.5, "先行": 1, "差し": 0.5, "追込": -1.5 }, draw: 0.5 },     // 坂を2回。4角8番手以内・内枠
+    "京都ダ1200": { bias: { "逃げ": 2, "先行": 2, "差し": -1, "追込": -2.5 }, draw: 0 },           // 下りで直線へ・平坦。前が粘る
+    "京都ダ1400": { bias: { "逃げ": 0.5, "先行": 1, "差し": 0.5, "追込": -0.5 }, draw: -0.5 },     // 芝スタートで外枠
+    "京都ダ1800": { bias: { "逃げ": 2.5, "先行": 1.5, "差し": -1, "追込": -2.5 }, draw: 0.3 },     // 1角まで約280m。内枠の先行がすんなり行けると有利
+    "京都ダ1900": { bias: { "逃げ": -0.5, "先行": 0, "差し": 1, "追込": 1 }, draw: 0 },            // 1800と逆で差し・追込が届く
+    "中京ダ1800": { bias: { "逃げ": 2, "先行": 2, "差し": -0.5, "追込": -2 }, draw: 0.5 }         // スタート直後の上り坂でペースが落ち、1角まで短い。外枠は内に入れず外を回され、ダートでは珍しく内枠有利
+  };
   function defaultBias(d) {
-    const small = ["中山", "福島", "小倉", "函館", "札幌"].includes(d.place) || /内回り/.test(d.courseNote || "");
+    const preset = /内回り/.test(d.courseNote || "") && /^京都芝1[46]00$/.test(`${d.place}${d.surface}${Number(d.dist)}`)
+      ? null : COURSE_PRESET[`${d.place}${d.surface}${Number(d.dist)}`];
+    if (preset) return { bias: Object.assign({}, preset.bias), draw: preset.draw };
+    const small =["中山", "福島", "小倉", "函館", "札幌"].includes(d.place) || /内回り/.test(d.courseNote || "");
     if (d.surface === "障") return { bias: { "逃げ": 1, "先行": 1, "差し": 0, "追込": -1.5 }, draw: 0.3 };
-    if (d.surface === "ダ") return { bias: { "逃げ": 1.5, "先行": 1.5, "差し": -0.5, "追込": -2 }, draw: 0.5 };
-    if (small) return { bias: { "逃げ": 1.5, "先行": 1.5, "差し": 0, "追込": -2.5 }, draw: 0.8 };
-    return { bias: { "逃げ": 0, "先行": 0.5, "差し": 0.5, "追込": 0 }, draw: 0.4 };
+    let r;
+    // ダートは前の馬が蹴り上げる砂をかぶらない逃げ・先行と、囲まれにくい外枠が有利(2021〜25年のダート全体で勝率 1枠6.5%・8枠8.1%)
+    if (d.surface === "ダ") r = { bias: { "逃げ": 1.5, "先行": 1.5, "差し": -0.5, "追込": -2 }, draw: -0.2 };
+    else if (small) r = { bias: { "逃げ": 1.5, "先行": 1.5, "差し": 0, "追込": -2.5 }, draw: 0.8 };
+    else r = { bias: { "逃げ": 0, "先行": 0.5, "差し": 0.5, "追込": 0 }, draw: 0.4 };
+    const key = `${d.place}${d.surface}${Number(d.dist)}`;
+    if (FIRST_CORNER_SHORT.includes(key)) {
+      r.bias["逃げ"] += 0.5; r.bias["先行"] += 0.5; r.draw += 0.3;
+    } else if (FIRST_CORNER_LONG.includes(key)) {
+      r.bias["逃げ"] -= 0.5; r.bias["先行"] -= 0.5; r.bias["差し"] += 0.5; r.bias["追込"] += 0.5; r.draw -= 0.2;
+    }
+    if (TURF_START_DIRT.includes(key)) r.draw = -0.3;
+    return r;
   }
   function hasAbilities(d) { return d && Array.isArray(d.horses) && d.horses.length >= 2 && d.horses.every(h => h && h.name && isFinite(Number(h.jisseki))); }
   function raceFromDoc(d, id) {
     const db = defaultBias(d);
     const num = (v, def) => (isFinite(Number(v)) && v !== null && v !== "" ? Number(v) : def);
+    // 当日のトラックバイアス(その日の同じ場・同じ馬場で、穴馬がどの枠・位置で好走したか)をコースの補正に足す
+    const cbias = Object.assign({}, d.courseBias || db.bias);
+    let dbias = num(d.drawBias, db.draw);
+    if (d.dayBias && typeof d.dayBias === "object") {
+      const f = num(d.dayBias.front, 0);
+      cbias["逃げ"] = (cbias["逃げ"] || 0) + f; cbias["先行"] = (cbias["先行"] || 0) + f * 0.6;
+      cbias["差し"] = (cbias["差し"] || 0) - f * 0.4; cbias["追込"] = (cbias["追込"] || 0) - f;
+      dbias += num(d.dayBias.draw, 0);
+    }
     return {
       id, iso: d.date, stage: d.stage || "", fromDb: true, auto: !!d.auto,
       star: !!d.star, starProb: num(d.starProb, null), starHonmei: d.starHonmei ? String(d.starHonmei) : "",
@@ -884,12 +953,13 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       course: `${d.surface || "芝"} ${d.dir || ""} ${num(d.dist, "")}m${d.courseNote ? "(" + d.courseNote + ")" : ""}`.replace(/\s+/g, " "),
       cond: String(d.cond || ""), heads: d.horses.filter(h => !h.scratched).length,
       weather: String(d.weather || ""), goingDefault: 0, chaos: num(d.chaos, 8),
-      courseBias: d.courseBias || db.bias, drawBias: num(d.drawBias, db.draw),
+      courseBias: cbias, drawBias: dbias,
       horses: d.horses.map(h => ({
         name: String(h.name), jockey: String(h.jockey || "未定"),
         style: STYLES_RUN.includes(h.style) ? h.style : "差し",
         jisseki: num(h.jisseki, 60), kyori: num(h.kyori, 65), course: num(h.course, 65), choshi: num(h.choshi, 65), kishu: num(h.kishu, 65),
-        heavy: num(h.heavy, 0), odds: num(h.odds, 50), oddsKari: true, umaban: null, note: String(h.note || "")
+        heavy: num(h.heavy, 0), odds: num(h.odds, 50), oddsKari: true, umaban: null, note: String(h.note || ""),
+        mustLead: !!h.mustLead, fromShort: !!h.fromShort, weight: num(h.weight, null)
       }))
     };
   }
@@ -1084,6 +1154,11 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     if (nige === 0) { hi -= 0.10; slow += 0.10; }
     if (sen >= 7) { hi += 0.05; slow -= 0.05; }
     if (sen <= 3) { hi -= 0.05; slow += 0.05; }
+    // 逃げにこだわる馬が2頭以上いると競り合いになりやすい。短い距離から延長してくる逃げ・先行馬が多いと前半が速くなりやすい
+    const must = horses.filter(h => h.mustLead).length;
+    const fromShort = horses.filter(h => h.fromShort).length;
+    if (must >= 2) { hi += 0.10; slow -= 0.10; }
+    if (fromShort >= 3) { hi += 0.05; slow -= 0.05; }
     hi = Math.max(0.05, hi); slow = Math.max(0.05, slow);
     const t = hi + mid + slow;
     return { high: hi / t, mid: mid / t, slow: slow / t };
@@ -1161,8 +1236,12 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     return horses.map((h, i) => {
       let s = baseScore(h) + (race.courseBias[h.style] || 0);
       const u = Number(h.umaban);
-      if (u >= 1 && u <= total) s += race.drawBias * (1 - 2 * (u - 1) / Math.max(1, total - 1));
+      // ダートの道悪は砂が締まって舞いにくく、砂かぶりによる外枠有利が半分になる
+      const db = /^ダ/.test(race.course || "") && going >= 2 && race.drawBias < 0 ? race.drawBias * 0.5 : race.drawBias;
+      if (u >= 1 && u <= total) s += db * (1 - 2 * (u - 1) / Math.max(1, total - 1));
       s += clampNum(h.heavy, -3, 3) * going * 0.9;
+      // ダートは雨で締まると速くなり、前が止まりにくい
+      if (/^ダ/.test(race.course || "") && going >= 2 && (h.style === "逃げ" || h.style === "先行")) s += 0.5;
       return s;
     });
   }
@@ -1280,7 +1359,9 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   function pickBets(cands, styleKey, evMinV) {
     const st = STYLES_BET[styleKey || settings.style];
     const evMin = Number(evMinV || settings.evMin);
-    const pool = cands.filter(c => st.types.includes(c.type) && c.p >= st.minP);
+    // 単勝は4〜9.9倍が長期の回収率がいちばん高い帯。3.9倍以下(勝ち切る難しさに対して戻りが小さい)と10倍以上(2・3着止まりが増える)は、期待値に余裕があるときだけ
+    const tanBand = c => c.type !== "単勝" || (c.odds >= 4 && c.odds < 10) || c.ev >= evMin + 0.2;
+    const pool = cands.filter(c => st.types.includes(c.type) && c.p >= st.minP && tanBand(c));
     const score = c => (c.ev - 1) * Math.sqrt(c.p);
     pool.sort((a, b) => score(b) - score(a));
     const perType = Math.max(2, Math.ceil(st.max / 2));
@@ -1295,6 +1376,15 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       return res;
     };
     const good = pick(pool.filter(c => c.ev >= evMin));
+    // ワイドが当たるとき、その2頭がそのまま1・2着のことも多い(約3回に1回)ので、同じ組の馬連を少額のおさえで添える(期待値1以上のときだけ)
+    if (st.types.includes("馬連")) {
+      for (const w of good.filter(c => c.type === "ワイド")) {
+        const same = c => c.type === "馬連" && c.h[0] === w.h[0] && c.h[1] === w.h[1];
+        if (good.some(same)) continue;
+        const q = cands.find(same);
+        if (q && q.ev >= 1) good.push(Object.assign({}, q, { cover: true }));
+      }
+    }
     const ref = good.length ? [] : pick(pool).slice(0, 3);
     return { good, ref };
   }
@@ -1307,7 +1397,9 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       return Object.assign({}, b, { w: f });
     });
     list.sort((a, b) => b.w - a.w);
-    if (list.length > units) list = list.slice(0, units);
+    // 予算が少ないときは点数を絞って1点に集める(1000円までは2点、2000円までは3点)。薄く広げると当たっても増えない
+    const cap = units <= 10 ? 2 : units <= 20 ? 3 : units;
+    if (list.length > cap) list = list.slice(0, cap);
     const tw = list.reduce((a, b) => a + b.w, 0);
     let used = 0;
     list.forEach(b => { b.u = Math.max(1, Math.floor(b.w / tw * units)); used += b.u; });
@@ -1584,6 +1676,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     const lines = [];
     lines.push(`<span>最終取得 <b>${esc(fmtTime(d.updatedAt))}</b>${d.source ? "・" + esc(d.source) : ""}</span>`);
     if (d.memo) lines.push(`<span>${esc(d.memo)}</span>`);
+    if (d.dayBias && d.dayBias.note) lines.push(`<span>${esc(d.dayBias.note)}</span>`);
     if (d.nextCheck) lines.push(`<span>次回の確認予定 ${esc(fmtTime(d.nextCheck))}</span>`);
     el.innerHTML = lines.join("");
     el.hidden = false;
@@ -1688,6 +1781,42 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     return m;
   }
 
+  // 1番人気の不安材料(過去3年・約1万レースの1番人気の成績で、平均より明らかに悪い条件)。出典は 馬情報/危険な人気馬と単勝の狙い方.md
+  function favRisks(i) {
+    const h = horses[i], r = [];
+    const turf = /^芝/.test(race.course || ""), dirt = /^ダ/.test(race.course || "");
+    const dist = Number(((race.course || "").match(/(\d{3,4})m/) || [])[1]) || 0;
+    const total = roster.length, u = Number(h.umaban);
+    if (h.style === "追込") r.push("追込(1番人気は後ろから行くほど成績が悪い)");
+    if (/前走逃げて好走/.test(h.note || "")) r.push("前走逃げて好走(次走は再現しにくい)");
+    if (h.weight && h.weight < 420) r.push(`馬体重${h.weight}kg(420kg未満の1番人気は成績が悪い)`);
+    if (turf && Number(settings.going) >= 2) r.push("芝の重・不良(馬場が悪いほど1番人気が負けやすい)");
+    if (dirt && total >= 10 && u >= 1 && u <= total * 0.3 && h.style !== "逃げ" && h.style !== "先行") r.push("ダートの内枠で砂をかぶりやすい");
+    if (turf && dist && dist <= 1400) r.push("芝1400m以下(短いほど1番人気が負けやすい)");
+    return r;
+  }
+
+  // オッズの断層: 単勝を人気順に並べ、隣の馬とのオッズが2倍以上離れる所でレースの勢力図を4つの型に分ける
+  function oddsGapHint(s) {
+    const idx = [...Array(s.n).keys()].filter(i => oddsOf(horses[i]) < 999).sort((a, b) => oddsOf(horses[a]) - oddsOf(horses[b]));
+    if (idx.length < 6) return "";
+    const o = idx.map(i => oddsOf(horses[i]));
+    const gap = [0, 1, 2, 3, 4].find(k => o[k + 1] / o[k] >= 2);
+    const fav = idx[0];
+    const risks = favRisks(fav);
+    const riskTxt = risks.length ? `(1番人気の不安: ${risks.map(esc).join("・")})` : "";
+    if (gap === 0) {
+      const mw = s.modelWin ? s.modelWin[fav] : null, kw = s.mkWin ? s.mkWin[fav] : null;
+      const low = mw != null && kw && mw < kw * 0.8;
+      if (low || risks.length)
+        return `1番人気(${esc(horses[fav].name)} ${o[0].toFixed(1)}倍)が抜けているが不安あり${low ? "(能力値からの勝率が市場より低い)" : ""}${riskTxt}。2番人気以下の逆転候補が狙い目`;
+      return `1番人気(${esc(horses[fav].name)} ${o[0].toFixed(1)}倍)が抜けて強そう。当たりやすいが配当が見合いにくく、見送り向き`;
+    }
+    if (gap === 1 || gap === 2) return `上位${gap + 1}頭が抜けている(${idx.slice(0, gap + 1).map(i => esc(horses[i].name)).join("・")})。この中で比べて1頭を選ぶレース${riskTxt}`;
+    if (gap === undefined && o[4] < 10) return `上位のオッズが割れて断層がない混戦。絞れる材料がなければ見送り向き${riskTxt}`;
+    return riskTxt ? `はっきりした型なし${riskTxt}` : "";
+  }
+
   function renderBets(s, m) {
     const mk = marketProbs();
     const cands = buildCandidates(s, mk);
@@ -1706,6 +1835,8 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     } else {
       v += `<span class="skip">期待値${settings.evMin}以上の馬券が見つからないため、このレースは見送りを推奨します。</span>参考として、条件に近い馬券を薄字で示します。`;
     }
+    const gapHint = oddsGapHint(s);
+    if (gapHint) v += `<br><span class="muted small">オッズの断層: ${gapHint}${kari ? "(仮オッズ)" : ""}</span>`;
     $("verdict").innerHTML = v;
 
     const statItems = ev ? [
@@ -1735,7 +1866,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
 
     const rows = (bets.length ? bets : ref).map(b => `
       <tr class="${bets.length ? "" : "ref"}">
-        <td><span class="type-pill" title="${BET_DESC[b.type] || ""}">${b.type}</span></td>
+        <td><span class="type-pill" title="${BET_DESC[b.type] || ""}">${b.type}</span>${b.cover ? ' <small class="muted" title="同じ組のワイドに添える少額のおさえ">おさえ</small>' : ""}</td>
         <td>${comboHtml(b)}</td>
         <td class="r num">${b.amount ? yen(b.amount) : "－"}</td>
         <td class="r num">${pct(b.p)}</td>

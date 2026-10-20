@@ -20,6 +20,9 @@ NOW=$(TZ=JST-9 date +%Y%m%d%H%M)
 declare -A PLACE=( [04]=新潟 [05]=東京 [08]=京都 [06]=中山 [09]=阪神 [07]=中京 [01]=札幌 [02]=函館 [03]=福島 [10]=小倉 )
 [ -f "$LOGR" ] || echo "raceId,date,place,no,name,grade,star,starProb,honmei,honmeiRank,winner,winnerPop,winnerPredRank,hits3" > "$LOGR"
 [ -f "$LOGH" ] || echo "raceId,date,place,surface,dist,grade,name,style,umaban,heads,jisseki,kyori,course,choshi,kishu,odds,predRank,rank,pop" > "$LOGH"
+# 当日のトラックバイアス用(終わったレースの全着順。bias.pl が読む)
+BIASF="$ROOT/馬情報/当日バイアス.tsv"
+[ -f "$BIASF" ] || printf 'date\tplace\tsurface\traceId\tumaban\theads\tlast4\trank\tpop\n' > "$BIASF"
 
 # dbにあるレースを (日付 場所 R) → ファイル で引けるようにする
 declare -A DBF
@@ -53,14 +56,19 @@ for off in -1 0 1 2; do
       [ "$off" -lt 0 ] && FIN=1
       if [ $FIN -eq 0 ]; then
         # これからのレース: 自動のレースは作り直し、重賞(Claudeが作ったdbのデータ)は★だけ更新
+        # その日の同じ場・同じ馬場で終わったレースから、当日のトラックバイアスを推定する(根拠が足りなければ空)
+        SRC="$OUT/tmp/r_$ID.json"; [ $RC -ne 0 ] && SRC="$DBFILE"
+        DAYB=""; [ -n "$SRC" ] && DAYB=$(perl "$HERE/bias.pl" "$BIASF" "$DISO" "${PLACE[$V]}" "$(field_of "$SRC" surface)")
         if [ $RC -eq 0 ] && { [ -z "$DBFILE" ] || [ "$(docid_of "$DBFILE")" = "k$ID" ]; }; then
           ST=$(perl "$HERE/star.pl" "$OUT/tmp/r_$ID.json" "$MODEL")
           perl -Mutf8 -MJSON::PP -0777 -e 'my $d = JSON::PP->new->utf8->decode(do { local $/; open my $h, "<:raw", $ARGV[0]; <$h> }); my $s = JSON::PP->new->utf8->decode($ARGV[1]);
-            $d->{star} = $s->{star}; $d->{starProb} = $s->{starProb}; $d->{starHonmei} = $s->{honmei}; print JSON::PP->new->utf8->canonical->encode($d)' "$OUT/tmp/r_$ID.json" "$ST" > "$OUT/races/k$ID.json"
+            $d->{star} = $s->{star}; $d->{starProb} = $s->{starProb}; $d->{starHonmei} = $s->{honmei}; $d->{dayBias} = JSON::PP->new->utf8->decode($ARGV[2]) if $ARGV[2];
+            print JSON::PP->new->utf8->canonical->encode($d)' "$OUT/tmp/r_$ID.json" "$ST" "$DAYB" > "$OUT/races/k$ID.json"
           printf 'race\tk%s\t%s\n' "$ID" "$OUT/races/k$ID.json" >> "$OUT/manifest.tsv"
         elif [ -n "$DBFILE" ]; then
           DOC=$(docid_of "$DBFILE"); ST=$(perl "$HERE/star.pl" "$DBFILE" "$MODEL")
-          perl -Mutf8 -MJSON::PP -e 'my $s = JSON::PP->new->utf8->decode($ARGV[0]); print JSON::PP->new->utf8->canonical->encode({ star => $s->{star}, starProb => $s->{starProb}, starHonmei => $s->{honmei} })' "$ST" > "$OUT/updates/$DOC.json"
+          perl -Mutf8 -MJSON::PP -e 'my $s = JSON::PP->new->utf8->decode($ARGV[0]); my %u = (star => $s->{star}, starProb => $s->{starProb}, starHonmei => $s->{honmei});
+            $u{dayBias} = JSON::PP->new->utf8->decode($ARGV[1]) if $ARGV[1]; print JSON::PP->new->utf8->canonical->encode(\%u)' "$ST" "$DAYB" > "$OUT/updates/$DOC.json"
           printf 'update\t%s\t%s\n' "$DOC" "$OUT/updates/$DOC.json" >> "$OUT/manifest.tsv"
         fi
         continue
@@ -89,6 +97,13 @@ for off in -1 0 1 2; do
           open my $A, ">>:utf8", $lr; print $A join(",", $id, $p->{date}, $p->{place}, $p->{no}, $p->{name}, $p->{grade} // "", $p->{star} ? 1 : 0, $p->{starProb} // "", $hm->{name}, $hm->{rank} // "", $w->{name}, $w->{pop} // "", $w->{predRank} // "", $v->{hits3}), "\n";
           open my $B, ">>:utf8", $lh; for my $x (@{$r->{rows}}) { print $B join(",", map { my $t = $x->{$_} // ""; $t =~ s/,/、/g; $t } qw(raceId date place surface dist grade name style umaban heads jisseki kyori course choshi kishu odds predRank rank pop)), "\n" }' \
           "$PRED" "$OUT/tmp/rev_$ID.json" "$LOGR" "$LOGH"
+        # 当日のトラックバイアス用に、全着順の馬番・4角の位置・人気を残す
+        perl -Mutf8 -MJSON::PP -0777 -e 'binmode STDOUT, ":utf8"; my ($pf, $rf, $id, $out) = @ARGV;
+          my $p = JSON::PP->new->utf8->decode(do { local $/; open my $h, "<:raw", $pf; <$h> }); $p = $p->{data} if ref $p->{data} eq "HASH";
+          my $r = JSON::PP->new->utf8->decode(do { local $/; open my $h, "<:raw", $rf; <$h> });
+          open my $A, ">>:utf8", $out; for my $x (@{$r->{order} || []}) { next unless ($x->{rank} // "") =~ /^\d+$/;
+            print $A join("\t", $p->{date}, $p->{place}, $p->{surface} // "", $id, $x->{umaban} // "", $r->{heads} // "", $x->{last4} // "", $x->{rank}, $x->{pop} // ""), "\n" }' \
+          "$PRED" "$OUT/tmp/res_$ID.json" "$ID" "$BIASF"
         # 振り返りを日ごとのファイルにも残す
         perl -Mutf8 -MJSON::PP -0777 -e 'binmode STDOUT, ":utf8"; my ($pf, $rf) = @ARGV;
           my $p = JSON::PP->new->utf8->decode(do { local $/; open my $h, "<:raw", $pf; <$h> }); $p = $p->{data} if ref $p->{data} eq "HASH";
