@@ -61,6 +61,12 @@ my @umaban = row('馬番'); my @waku = row('枠番');
 my @jockey = row('騎手'); my @kin = row('斤量'); my @odds = row('単勝'); my @bw = row('馬体重');
 my @intv = row('間隔'); my @omega = row('Ω指数'); my @sexage = row('性·齢');
 my @jc = row('騎手コース');
+# 調教師×騎手の連対率: この行は後ろにコメントが付くので、見出し(th)で行を探す
+my @tj; if ($h =~ /<tr[^>]*>((?:(?!<tr[\s>]).)*?<th>\s*調教師×)/s) { my @c = map { txt($_) } top_tds($1); @tj = @c[-$n .. -1] if @c >= $n }
+# 騎手ごとの、脚質・性別で成績がはっきり変わる条件(過去3年。騎手の解説動画の要約で未検証。出典: 馬情報/騎手の得意・苦手.md)
+#   コース・距離の得意不得意は「騎手のこのコース連対率」に入っているので、ここでは足さない
+my %J_OIKOMI = ('西村淳' => -3, '丹内' => -3, 'ルメール' => -2, '坂井' => -2, '松山' => -2, '幸' => -2);   # 追込で勝つ割合がとても低い
+my %J_HINBA = ('今村' => 2, '北村友' => -2);   # 牝馬で成績がはっきり上・下
 # 成績表(距離・コース・馬場): 1頭に1つの小さな表。列ごとに [1着,2着,3着,着外]
 sub rec_tables {
   my $s = sect(shift); my @out;
@@ -146,6 +152,18 @@ for my $i (0 .. $n - 1) {
   if (@ratios) { my $m = 0; $m += $_ for @ratios; $m /= @ratios; $style = $m <= 0.12 ? '逃げ' : $m <= 0.35 ? '先行' : $m <= 0.7 ? '差し' : '追込' }
   elsif ($legs[$i]) { for my $k (0 .. 3) { if (($legs[$i][$k] // '') eq '▲') { $style = $STY[$k]; last } } }
   $style //= '差し';
+  # 騎手の補正(合計±5まで): 調教師×騎手の連対率(陣営が勝負馬を任せるコンビか)、騎手×脚質、騎手×性別
+  my ($ja, @jw) = (0);
+  my ($tr, $tn) = ($tj[$i] // '') =~ /([\d.]+)%\s*\[(\d+)\]/;
+  if (defined $tn && $tn >= 10) {
+    if ($tr >= 40) { $ja += 3; push @jw, "調教師×騎手の連対率${tr}%(+3)" }
+    elsif ($tr >= 30) { $ja += 2; push @jw, "調教師×騎手の連対率${tr}%(+2)" }
+    elsif ($tr <= 5 && $tn >= 15) { $ja -= 2; push @jw, "調教師×騎手の連対率${tr}%(-2)" }
+  }
+  my $jk = $jockey[$i] // ''; $jk =~ s/^[A-Za-z]\.//;
+  for my $k (keys %J_OIKOMI) { if ($style eq '追込' && index($jk, $k) == 0) { $ja += $J_OIKOMI{$k}; push @jw, "${k}騎手は追込が苦手($J_OIKOMI{$k})" } }
+  for my $k (keys %J_HINBA) { if (($sexage[$i] // '') =~ /^牝/ && index($jk, $k) == 0) { $ja += $J_HINBA{$k}; push @jw, "${k}騎手は牝馬" . ($J_HINBA{$k} > 0 ? "が得意(+" : "が苦手(") . "$J_HINBA{$k})" } }
+  $kishu = clamp($kishu + clamp($ja, -5, 5), 50, 95) if $ja;
   my $heavy = 0; my $g = $rgoing[$i]; my $wruns = 0;
   if ($g) { my ($w, $p, $runs) = (0, 0, 0); for my $k (keys %$g) { next unless $k =~ /稍|重|不/; my ($a, $b, $c, $o) = map { $_ // 0 } @{$g->{$k}}; $w += $a; $p += $a + $b + $c; $runs += $a + $b + $c + $o }
     $heavy = $w >= 1 ? 2 : ($runs >= 1 && $p / $runs >= 0.4) ? 1 : ($runs >= 2 && $p == 0) ? -1 : 0; $wruns = $runs }
@@ -162,6 +180,7 @@ for my $i (0 .. $n - 1) {
   push @notes, "初出走" unless @$z;
   push @notes, "休み明け($iv)" if (defined $wk && $wk >= 20) || $iv =~ /ヶ月|半年|年/;
   push @notes, "騎手のこのコース連対率 $jr%" if defined $jn && $jn >= 5;
+  push @notes, @jw;
   push @notes, $snote if $snote;
   push @notes, $unote if $unote;
   my %hh = (name => $name, jockey => ($jockey[$i] // '未定'), style => $style,
