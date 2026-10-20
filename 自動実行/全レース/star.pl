@@ -52,6 +52,8 @@ push @risk, '追込' if ($fh->{style} // '') eq '追込';
 push @risk, '前走逃げて好走' if ($fh->{note} // '') =~ /前走逃げて好走/;
 push @risk, '馬体重420kg未満' if $fh->{weight} && $fh->{weight} < 420;
 push @risk, '芝の重・不良' if ($race->{surface} // '') eq '芝' && $going >= 2;
+# 1番人気の勝率が平均(約33%)より明らかに低い騎手(馬情報/騎手の得意・苦手.md: 幸24.5%・三浦25.5%・今村28%・横山典28%・丹内29.3%・西村淳29.4%)
+push @risk, '1番人気で勝ち切れない騎手' if ($fh->{jockey} // '') =~ /^(幸|三浦|今村|横山典|丹内|西村淳)/;
 my $star = ($p3[$hon] >= $thr && $hon == $fav && !@risk) ? 1 : 0;
 print JSON::PP->new->canonical->encode({ star => ($star ? JSON::PP::true : JSON::PP::false), starProb => int($p3[$hon] * 1000 + 0.5) / 1000, favRisk => \@risk,
   honmei => $hs[$hon]{name}, threshold => $thr, oddsReal => ($real ? JSON::PP::true : JSON::PP::false) }), "\n";
