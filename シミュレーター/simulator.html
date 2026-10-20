@@ -816,6 +816,10 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     mid:  { "逃げ": 0, "先行": 0.5, "差し": 0, "追込": -0.5 },
     slow: { "逃げ": 4, "先行": 2, "差し": -1.5, "追込": -4 }
   };
+  // 逃げないと走らない馬(mustLead)は、競り合うハイペースで崩れやすく、楽に行けるスローで粘りやすい
+  const MUST_LEAD_ADJ = { high: -1.5, mid: 0, slow: 1 };
+  // 小回りのローカル場は能力差が小さく、展開の影響が大きい
+  const PACE_BIG_PLACES = ["福島", "小倉", "函館", "札幌"];
   const PACE_LABEL = { high: "ハイ", mid: "ミドル", slow: "スロー" };
   const GOING_LABEL = ["良", "稍重", "重", "不良"];
 
@@ -953,7 +957,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       course: `${d.surface || "芝"} ${d.dir || ""} ${num(d.dist, "")}m${d.courseNote ? "(" + d.courseNote + ")" : ""}`.replace(/\s+/g, " "),
       cond: String(d.cond || ""), heads: d.horses.filter(h => !h.scratched).length,
       weather: String(d.weather || ""), goingDefault: 0, chaos: num(d.chaos, 8),
-      courseBias: cbias, drawBias: dbias,
+      courseBias: cbias, drawBias: dbias, paceScale: PACE_BIG_PLACES.includes(String(d.place || "")) ? 1.25 : 1,
       horses: d.horses.map(h => ({
         name: String(h.name), jockey: String(h.jockey || "未定"),
         style: STYLES_RUN.includes(h.style) ? h.style : "差し",
@@ -1231,6 +1235,23 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     return out;
   }
 
+  // 道悪(稍重〜不良)で産駒の成績がはっきり上がる(+1)・下がる(-1)種牡馬。全レース自動計算(race_json.pl)と同じ表。出典は 馬情報/種牡馬の道悪適性.md
+  const SIRE_WET = {
+    "芝": { "キズナ": 1, "モーリス": 1, "イスラボニータ": 1, "ファインニードル": 1, "シスキン": 1, "キタサンブラック": -1, "レイデオロ": -1, "スワーヴリチャード": -1, "コントレイル": -1 },
+    "ダ": { "ナダル": 1, "パイロ": 1, "サンダースノー": -1 }
+  };
+  // 手で付けたレースで重馬場適性が未設定(0)の馬は、同じ芝・ダートで道悪の経験が2戦以下なら父の傾向で ±1(自動計算のレースは計算時に反映済み)
+  function sireWetAdj(h) {
+    if (race.auto || Number(h.heavy)) return 0;
+    try {
+      const surf = (race.course || "").charAt(0), p = horseProfile(h.name);
+      const a = (SIRE_WET[surf] || {})[p.sire];
+      if (!a) return 0;
+      const wet = (p.runs || []).filter(r => (!r.surface || r.surface === surf) && /稍|重|不/.test(r.going || "")).length;
+      return wet <= 2 ? a : 0;
+    } catch (e) { return 0; }
+  }
+
   function baseFixed(going) {
     const total = roster.length;
     return horses.map((h, i) => {
@@ -1239,7 +1260,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       // ダートの道悪は砂が締まって舞いにくく、砂かぶりによる外枠有利が半分になる
       const db = /^ダ/.test(race.course || "") && going >= 2 && race.drawBias < 0 ? race.drawBias * 0.5 : race.drawBias;
       if (u >= 1 && u <= total) s += db * (1 - 2 * (u - 1) / Math.max(1, total - 1));
-      s += clampNum(h.heavy, -3, 3) * going * 0.9;
+      s += clampNum(Number(h.heavy) + (going ? sireWetAdj(h) : 0), -3, 3) * going * 0.9;
       // ダートは雨で締まると速くなり、前が止まりにくい
       if (/^ダ/.test(race.course || "") && going >= 2 && (h.style === "逃げ" || h.style === "先行")) s += 0.5;
       return s;
@@ -1252,14 +1273,17 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     const order = new Uint8Array(N * 3);
     const win = new Float64Array(n), top2 = new Float64Array(n), top3 = new Float64Array(n);
     const perf = new Float64Array(n);
+    const ps = Number(race.paceScale) || 1;
+    const paceAdd = {};
+    for (const k of ["high", "mid", "slow"]) paceAdd[k] = horses.map(h => (PACE_ADJ[k][h.style] || 0) * ps + (h.mustLead ? MUST_LEAD_ADJ[k] : 0));
     for (let r = 0; r < N; r++) {
       const x = rnd();
       const pace = x < pp.high ? "high" : (x < pp.high + pp.mid ? "mid" : "slow");
-      const adj = PACE_ADJ[pace];
+      const adj = paceAdd[pace];
       for (let i = 0; i < n; i++) {
         let u = rnd(); if (u < 1e-12) u = 1e-12;
         const g = Math.sqrt(-2 * Math.log(u)) * Math.cos(6.283185307179586 * rnd());
-        perf[i] = fixed[i] + adj[horses[i].style] + g * sigma;
+        perf[i] = fixed[i] + adj[i] + g * sigma;
       }
       let a = -1, b = -1, c = -1;
       for (let i = 0; i < n; i++) {
@@ -2423,6 +2447,30 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     };
   }
 
+  // 騎手の得意・苦手(過去3年。YouTubeの騎手解説動画の要約で未検証)。詳しくは 馬情報/騎手の得意・苦手.md
+  const JOCKEY_TIPS = {
+    "ルメール": { rate: "27.8%", good: "東京(芝2400mは複勝率74%)・芝マイル・芝長距離・新潟・逃げ先行", bad: "芝1200m前後・追込・高齢馬・阪神中京", pop: "1番人気は堅い。7番人気以下は0勝" },
+    "坂井瑠星": { rate: "15.5%", good: "芝1200m前後(勝率22%)・ダート中距離・逃げ先行・京都・大久保龍厩舎", bad: "芝長距離・中山", pop: "上位人気は信頼。9番人気以下は0勝" },
+    "武豊": { rate: "14.4%", good: "ダート中距離・芝1200m前後・京都・夏の北海道・武英智/友道厩舎", bad: "芝1400m", pop: "騎手人気で売れやすい。10番人気以下は0勝" },
+    "松山弘平": { rate: "13.8%", good: "ダート中距離(勝ち数1位)・芝1800m・逃げ先行・小倉・杉山晴/橋口/池添学厩舎", bad: "芝長距離・東京中山", pop: "10番人気以下は0勝" },
+    "北村友一": { rate: "10.8%", good: "芝1800〜2000m・京都中京・夏の北海道・斉藤崇/高野/藤原英厩舎", bad: "小倉・芝1200m・牝馬", pop: "1番人気の勝率41.8%で堅い。12番人気以下は0勝" },
+    "西村淳也": { rate: "10.4%", good: "芝マイル〜1800m・ダート中距離・逃げ先行・中京・中内田/杉山晴/高野厩舎", bad: "追込(勝ちの2%)・東京", pop: "1番人気の勝率29.4%でやや低い。8番人気以下の穴は多い" },
+    "横山典弘": { rate: "10.1%", good: "芝1800m・差し追込・東京・昆/松永幹/安田翔/菊沢厩舎", bad: "芝1200m前後(勝率2%)", pop: "1番人気の勝率28%。重賞は2・3着が多くヒモ向き。11番人気以下は0勝" },
+    "高杉吏麒": { rate: "9.3%", good: "芝・ダートの1400m以下・先行・中京・牡馬", bad: "芝マイル・芝1800m", pop: "人気でも穴でも良い(8番人気以下の勝ち数3位)" },
+    "津村明秀": { rate: "8.4%", good: "芝1800m・芝長距離・ダート短距離・中山福島・林徹/手塚厩舎", bad: "芝1400m・関西の競馬場", pop: "穴が多い(単勝回収率99%)。ヒモで押さえる" },
+    "三浦皇成": { rate: "8.3%", good: "ダート全般・中山福島・差し・武井厩舎", bad: "芝長距離・重賞", pop: "1番人気の勝率25.5%。2着が多い" },
+    "田辺裕信": { rate: "8.2%", good: "芝2200m以上・芝マイル・追込・福島(重賞5勝すべて)", bad: "芝1200m前後(1着では買わない)・芝1400m", pop: "人気別は平均どおり" },
+    "丹内祐次": { rate: "8.2%", good: "芝1200m(勝ち数1位)・芝2000m以上・逃げ先行・中山と小回りのローカル", bad: "追込(勝ちの1%)・芝マイル・東京阪神京都・重賞", pop: "1番人気の勝率29.3%。14番人気以下は0勝" },
+    "幸英明": { rate: "5.7%", good: "芝1200m前後・ダート中距離・阪神小倉・橋口/鈴木孝厩舎", bad: "芝マイル・芝2000m・追込・東京中山", pop: "1番人気の勝率24.5%で信頼しない。2番人気は良い" },
+    "今村聖奈": { rate: "4.8%", good: "新潟芝1000m(勝率17.6%)・牝馬・寺島/武井厩舎", bad: "芝マイル・小倉・中央場所", pop: "上位人気で走らない(1番人気28%)" }
+  };
+  function jockeyTips(name) {
+    const key = jKey(name);
+    if (!key) return null;
+    const hit = Object.keys(JOCKEY_TIPS).find(k => k.startsWith(key) || key.startsWith(k));
+    return hit ? JOCKEY_TIPS[hit] : null;
+  }
+
   function jockeyCard(name) {
     const key = jKey(name);
     const rows = PROF.results.filter(r => jKey(r[R.jockey]) === key && !/取消|除外/.test(r[R.rank]))
@@ -2472,12 +2520,22 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
         ${recent.map(r => `<tr><td class="num">${esc(String(r[R.date]).replace(/-/g, "/"))}</td><td>${esc(r[R.race])} ${gradeBadge(normGrade(r[R.grade]), true)}</td><td>${esc(`${r[R.place]} ${r[R.surface] || ""}${r[R.dist] || ""}${r[R.going] ? " " + r[R.going] : ""}`)}</td><td>${nameBtn(r[R.horse])}</td><td class="r num">${esc(r[R.pop] || "")}人</td><td class="c">${posBadge(r[R.rank])}${r[R.heads] ? `<span class="muted small">/${r[R.heads]}</span>` : ""}</td></tr>`).join("")}
       </tbody></table></div>` : "";
 
+    const tip = jockeyTips(name) || jockeyTips(fullName);
+    const tipHtml = tip ? `<div class="panel"><h3>得意・苦手 <span class="sub">過去3年・全レース・勝率${esc(tip.rate)}</span></h3>
+        <div class="tbl-wrap"><table class="t"><tbody>
+          <tr><th>得意</th><td>${esc(tip.good)}</td></tr>
+          <tr><th>苦手</th><td>${esc(tip.bad)}</td></tr>
+          <tr><th>人気</th><td>${esc(tip.pop)}</td></tr>
+        </tbody></table></div>
+        <p class="card-foot">YouTubeの騎手解説動画の要約(数値は未検証)。詳しくは 馬情報/騎手の得意・苦手.md</p></div>` : "";
+
     return {
       kind: "騎手データ",
       html: `<div class="prof-top">
           <div><h2 class="prof-name gold-text">${esc(fullName)}</h2>
             <div class="prof-sub">${kishu ? `このレースの騎手評価 ${rk(kishu.kishu)} <b class="num">${Math.round(kishu.kishu)}</b>` : ""}</div></div>
         </div>
+        ${tipHtml}
         <div class="panel"><h3>2026年 重賞成績 <span class="sub">${lastDate ? esc(lastDate.slice(5).replace("-", "/")) + "まで" : ""}・JRA重賞のみ</span></h3>${stats}${gradeHtml}</div>
         <div class="panels">
           <div class="panel"><h3>騎乗予定</h3>${ridesHtml}</div>
