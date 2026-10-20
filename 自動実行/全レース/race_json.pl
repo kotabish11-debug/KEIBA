@@ -102,6 +102,9 @@ my %SIRE_WET = (
   '芝' => { 'キズナ' => 1, 'モーリス' => 1, 'イスラボニータ' => 1, 'ファインニードル' => 1, 'シスキン' => 1,
             'キタサンブラック' => -1, 'レイデオロ' => -1, 'スワーヴリチャード' => -1, 'コントレイル' => -1 },
   'ダ' => { 'ナダル' => 1, 'パイロ' => 1, 'サンダースノー' => -1 });
+# 国別タイプが米国型(本馬や産駒がアメリカのダートで実績)とはっきり言える種牡馬。仕上がりが早くダッシュ力があり、若駒のダート短距離に強い(亀谷敬正の動画、未検証)
+my %SIRE_US = map { $_ => 1 } qw(ヘニーヒューズ アジアエクスプレス モーニン パイロ シニスターミニスター マジェスティックウォリアー ドレフォン マインドユアビスケッツ
+  カリフォルニアクローム ニューイヤーズデイ ナダル ダノンレジェンド ディスクリートキャット シャンハイボビー エンパイアメーカー カジノドライヴ ストリートセンス アメリカンペイトリオット ミスターメロディ);
 # 脚質マーク(逃・先・差・追の順に▲が付く)
 my @legs; while ($nm =~ /<ul class="dbrunstyle2 legs">(.*?)<\/ul>/sg) { push @legs, [map { txt($_) } ($1 =~ /<li[^>]*>(.*?)<\/li>/sg)] }
 
@@ -149,7 +152,10 @@ for my $i (0 .. $n - 1) {
   # 道悪の経験が少ない(2戦以下)馬は、父の産駒の道悪成績で ±1(出典: 馬情報/種牡馬の道悪適性.md)
   my $sire = $sire{$name} // ''; my $sadj = $SIRE_WET{$surf}{$sire} // 0; my $snote = '';
   if ($sadj && $wruns <= 2) { $heavy = clamp($heavy + $sadj, -2, 2); $snote = "父${sire}は道悪" . ($sadj > 0 ? '得意' : '苦手') }
-  my $od = ($odds[$i] // '') =~ /^([\d.]+)/ ? $1 + 0 : undef;
+  # 2・3歳限定の新馬・未勝利・1勝クラスのダート1400m以下は、父が米国型なら +2(出典: 馬情報/血統の系統と国別タイプ.md)
+  my $unote = '';
+  if ($SIRE_US{$sire} && $surf eq 'ダ' && $dist <= 1400 && $cls =~ /^[23]歳(?:新馬|未勝利|1勝クラス)/) { $course = clamp($course + 2, 50, 92); $unote = "父${sire}は米国型(若駒のダート短距離 +2)" }
+  my $od =($odds[$i] // '') =~ /^([\d.]+)/ ? $1 + 0 : undef;
   my @notes = ("Ω指数 " . (($omega[$i] // '') =~ /^\d+$/ ? $omega[$i] : 'なし'));
   push @notes, "前走 $z->[0]{race} $z->[0]{rank}着" if @$z && $z->[0]{rank};
   push @notes, $mnote if $mnote;
@@ -157,6 +163,7 @@ for my $i (0 .. $n - 1) {
   push @notes, "休み明け($iv)" if (defined $wk && $wk >= 20) || $iv =~ /ヶ月|半年|年/;
   push @notes, "騎手のこのコース連対率 $jr%" if defined $jn && $jn >= 5;
   push @notes, $snote if $snote;
+  push @notes, $unote if $unote;
   my %hh = (name => $name, jockey => ($jockey[$i] // '未定'), style => $style,
     jisseki => $jisseki, kyori => $kyori, course => $course, choshi => clamp($choshi, 40, 95), kishu => $kishu, heavy => $heavy,
     note => join('・', @notes) . '(自動計算)');
