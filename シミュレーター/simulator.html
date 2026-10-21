@@ -2150,6 +2150,8 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     } else if (fav < 2) {
       out.push(`1倍台の1番人気は単勝ではなく軸にして、馬連は相手を絞り、3連複は相手を広げて上振れを狙う形(最大${up.toFixed(0)}倍)`);
     }
+    // 穴狙いでも、続けるなら的中率15%以上が目安(出典: 馬情報/馬券の買い方_単勝・馬連・馬単.md のコタ「最強の馬連の買い方」)
+    if (ev.hit < 0.15) out.push(`どれかが当たる確率が${(ev.hit * 100).toFixed(0)}%で15%未満。この形のレースばかりだと連敗が長くなるので、当たりやすいレースと混ぜる`);
     return out.join("。");
   }
 
@@ -2168,6 +2170,13 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       if (rest.length && rest.length < list.length) t += `(1番人気${esc(horses[fav].name)}を含む${list.length - rest.length}点を外すと${so(rest).toFixed(2)}倍)`;
       const hi = list.filter(b => b.odds >= 200);
       if (type === "3連単" && hi.length && hi.length < list.length) t += `(200倍未満の${list.length - hi.length}点を外すと${so(hi).toFixed(2)}倍)`;
+      // 馬連で1番人気を軸にするなら、2・3番人気との組はみんなが買う低配当なので外し、合成で5倍以上を目安にする(出典: 同上のコタ「最強の馬連の買い方」)
+      if (type === "馬連" && !rest.length) {
+        const pop23 = horses.map((h, i) => i).filter(i => i !== fav).sort((a, b) => oddsOf(horses[a]) - oddsOf(horses[b])).slice(0, 2);
+        const keep = list.filter(b => !b.h.some(i => pop23.includes(i)));
+        if (keep.length && keep.length < list.length) t += `(1番人気軸: 2・3番人気との${list.length - keep.length}点を外すと${so(keep).toFixed(2)}倍)`;
+        else if (so(list) < 5) t += `(1番人気軸で合成5倍未満。相手を絞るか見送りも)`;
+      }
       out.push(t);
     }
     return out.join(" / ");
