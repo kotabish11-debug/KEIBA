@@ -1964,7 +1964,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     if (h.weightDiff != null && Math.abs(h.weightDiff) >= 15) r.push({ why: `馬体重${h.weightDiff > 0 ? "+" : ""}${h.weightDiff}kg`, pt: -2 });
     return r;
   }
-  function axisHint() {
+  function axisHint(s) {
     const idx = [...Array(horses.length).keys()].filter(i => oddsOf(horses[i]) < 999).sort((a, b) => oddsOf(horses[a]) - oddsOf(horses[b])).slice(0, 3);
     if (idx.length < 3) return "";
     const rows = idx.map(i => { const c = axisChecks(horses[i]); return { i, c, sum: c.reduce((a, x) => a + x.pt, 0) }; });
@@ -1973,7 +1973,17 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     const tops = rows.filter(x => x.sum === best);
     const top = tops.length === rows.length ? "→ 減点では差がつかない" : `→ 減点が最も少ないのは${tops.map(x => esc(horses[x.i].name)).join("・")}`;
     const danger = rows.filter(x => x.sum <= -8).map(x => esc(horses[x.i].name));
-    return `${txt} ${top}${danger.length ? `。${danger.join("・")}は減点が多く、危険な人気馬の可能性` : ""}`;
+    // 券種で軸に求める条件が変わる(馬連=2着以内の確実性、ワイド・3連複=3着以内の安定感。出典: 馬情報/軸馬と相手の選び方.md のテスラの動画)
+    let byType = "";
+    if (s) {
+      const nm = i => esc(horses[i].name);
+      const t2 = idx.reduce((a, b) => (s.top2[b] > s.top2[a] ? b : a));
+      const t3 = idx.reduce((a, b) => (s.top3[b] > s.top3[a] ? b : a));
+      byType = t2 === t3
+        ? `。券種別の軸: 馬連・ワイド・3連複とも${nm(t2)}(2着以内${pct(s.top2[t2], 0)}・3着以内${pct(s.top3[t3], 0)})`
+        : `。券種別の軸: 馬連なら${nm(t2)}(2着以内${pct(s.top2[t2], 0)})、ワイド・3連複なら${nm(t3)}(3着以内${pct(s.top3[t3], 0)})`;
+    }
+    return `${txt} ${top}${danger.length ? `。${danger.join("・")}は減点が多く、危険な人気馬の可能性` : ""}${byType}`;
   }
 
   // 収束の速さ(単勝・複勝=早い、馬連・ワイド=中期、3連系=長期)と上振れ幅。出典: 馬情報/馬券の買い方_収束と上振れ.md
@@ -2017,7 +2027,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     if (gapHint) v += `<br><span class="muted small">オッズの断層: ${gapHint}${kari ? "(仮オッズ)" : ""}</span>`;
     const trio = trioHint(s);
     if (trio) v += `<br><span class="muted small">3連複の向き: ${trio}</span>`;
-    const ax = axisHint();
+    const ax = axisHint(s);
     if (ax) v += `<br><span class="muted small">軸の減点(1〜3番人気): ${ax}</span>`;
     const conv = convHint(ev, bets, s);
     if (conv) v += `<br><span class="muted small">収束と上振れ: ${conv}</span>`;
