@@ -1,7 +1,7 @@
 # 予想と結果の記録から、能力値の重み(実績・距離・コース・調子・騎手)と★の基準を調整する
 # 使い方: perl optimize.pl <馬ごとの記録.csv> <レースごとの記録.csv> <今のmodel.json> > 新しいmodel.json
 # - 重み: 勝ち馬が高い点数になるように(条件付きロジット)当てはめ、記録が少ないうちは今の重みに強く寄せる
-# - ★の基準(◎の3着以内率がこれ以上なら★): ★を付けたレースの◎の3着以内率が9割を下回れば上げ、10割なら少し下げる
+# - ★の基準(◎の3着以内率がこれ以上なら★): ★を付けたレースの◎の3着以内率が83%を下回れば上げ、92%以上なら少し下げる
 use utf8; use strict; use warnings;
 binmode STDOUT, ':utf8';
 use JSON::PP;
@@ -55,7 +55,8 @@ my @stars = grep { ($_->{star} // '') eq '1' && ($_->{honmeiRank} // '') =~ /^\d
 my $sp = $model->{starTop3} || 0.80; my $shit = undef;
 if (@stars >= 10) {
   my $ok = grep { $_->{honmeiRank} <= 3 } @stars; $shit = $ok / @stars;
-  if ($shit < 0.9) { $sp += 0.02 } elsif ($shit >= 0.999) { $sp -= 0.01 }
+  # 目標は★のレースで◎の3着以内が83%以上(過去1,871レースでは、基準80%で実際84%・基準85%でも85%で、9割には届かない。馬情報/的中率を上げるための検証.md)
+  if ($shit < 0.83) { $sp += 0.02 } elsif ($shit >= 0.92) { $sp -= 0.01 }
   $sp = 0.95 if $sp > 0.95; $sp = 0.70 if $sp < 0.70;
 }
 my @all = grep { ($_->{honmeiRank} // '') =~ /^\d+$/ } @rr;

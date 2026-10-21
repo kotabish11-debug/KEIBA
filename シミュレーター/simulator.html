@@ -627,6 +627,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
           <li>払戻率: 売上のうち、当たった人に戻る割合(JRAの規定)。残りは控除される。払戻率が高い単勝・複勝ほど、長く買ったときに損をしにくい</li>
           <li>買い方ごとの券種: 堅実=単勝・複勝・ワイド・馬連 / バランス=左に加えて馬単・3連複 / 高配当=馬連・馬単・3連複・3連単</li>
           <li>ワイドを買うときは、同じ2頭の馬連を「おさえ」として少額で添えます(期待値1以上のときだけ)。ワイドが当たるとき、その2頭がそのまま1・2着のことも多いためです</li>
+          <li>3連単は◎(勝率1位)を1着に固定した組だけを買います。◎が1着のときのボーナスという位置づけで、1着を入れ替えるマルチやボックスは点数が増えるのに配当が見合わないため買いません</li>
           <li>単勝は4〜9.9倍の馬を中心に選びます。3.9倍以下と10倍以上は、期待値が条件より0.2以上高いときだけ買い目に入れます</li>
           <li>予算が少ないときは点数を絞ります(1000円までは2点、2000円までは3点)。少ない予算を薄く広げると、当たっても増えにくいためです</li>
           <li>「オッズの断層」は、単勝を人気順に並べて隣同士が2倍以上離れる所から、レースの型を示します(1番人気が抜けて強い=見送り向き/抜けているが不安=逆転候補が狙い目/上位2〜3頭が抜けている=その中で比べる/断層なしの混戦=見送り向き)</li>
@@ -680,7 +681,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
           <span class="small">大きいほど実力どおりに決まりにくい(GIの標準は8前後)</span>
         </div>
         <div class="field"><label for="blend">オッズの比重 <span class="num" id="blendVal"></span></label>
-          <input type="range" id="blend" min="0" max="90" step="5" value="60">
+          <input type="range" id="blend" min="0" max="100" step="5" value="90">
           <span class="small" id="blendNote">単勝オッズには多くの人の情報が入っていて、能力値だけより当たりやすい。0%で能力値だけ</span>
         </div>
         <div class="field"><label for="runs">シミュレーション回数</label>
@@ -723,7 +724,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     <ul>
       <li>各馬の能力値に、展開(ペース × 脚質)・コースの有利不利・枠・馬場の補正と、ランダムなぶれを加えて、レースを何万回も走らせます。</li>
       <li>勝率・連対率・複勝率は、その中で1着・2着以内・3着以内に入った割合です。</li>
-      <li>実際の単勝オッズが出ると、能力値の勝率とオッズから見た勝率を「オッズの比重」で混ぜ、各馬の地力をその勝率に合うよう調整してから走らせます(Benterの方式)。オッズは人気薄ほど売れすぎる傾向があるので、人気馬寄りに補正して使います。</li>
+      <li>実際の単勝オッズが出ると、能力値の勝率とオッズから見た勝率を「オッズの比重」で混ぜ、各馬の地力をその勝率に合うよう調整してから走らせます(Benterの方式)。オッズの比重の初期値90%と、オッズを補正せずそのまま使う(1/オッズ)ことは、2026年4〜10月の平場1,871レースで当たり方を比べて決めました(出典: 馬情報/的中率を上げるための検証.md)。</li>
       <li>JRAの重賞(G1・G2・G3)は、出走登録されるとClaudeが能力値を付けてデータを作り、レース一覧に自動で加わります。</li>
       <li>枠順・単勝オッズ・馬場・天気・馬体重・出走取消は、Claudeが定期的にスポーツナビ競馬・JRA・tenki.jpから取得し、自動で反映します。右上の表示が緑なら受信中です。</li>
       <li>券種ごとの推定オッズは、単勝オッズから市場の予想確率を出して計算した目安です(JRAの控除率を反映)。実際のオッズとはずれます。</li>
@@ -731,7 +732,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       <li>能力の数値とランク(S〜G)は、このデータを元にClaudeが付けた評価です。予想は的中を保証しません。</li>
       <li>東京・京都・新潟の重賞以外のレースも、すべて自動で入ります。これらの能力値は、競馬ラボのΩ指数・距離とコースの成績・前走・騎手のコース連対率から自動で計算しています(重賞はClaudeが判断材料を見て付けます)。</li>
       <li>レースが終わると、予想と結果を比べた「振り返り」(違った点・次に外さないために)がそのレースに付きます。振り返りの記録から、能力値の重みと★の基準を毎回自動で調整します。</li>
-      <li>★は、◎が3着以内に入る確率が基準以上で、しかも1番人気のレースです。★のレースで◎が3着を外した割合が1割を超えると、基準が自動で厳しくなります。</li>
+      <li>★は、◎が3着以内に入る確率が基準以上で、しかも1番人気のレースです。★のレースで◎が3着以内に入った割合が83%を下回ると、基準が自動で厳しくなります(過去1,871レースでは、基準80%のとき★は全体の約2割・◎の3着以内は84%)。</li>
     </ul>
     <p class="small" id="modelInfo"></p>
   </section>
@@ -923,6 +924,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     "京都芝1400": { bias: { "逃げ": 0.5, "先行": 1, "差し": 0.5, "追込": -1 }, draw: 0.3 },        // 外回り(下級条件は内回り)
     "京都芝1600": { bias: { "逃げ": -0.5, "先行": 0.5, "差し": 1, "追込": 0 }, draw: 0.2 },        // 外回り。1角まで約710mで枠の差は小さい。下りから長く脚を使う馬
     "京都芝1800": { bias: { "逃げ": -0.5, "先行": 0, "差し": 1, "追込": 0.5 }, draw: 0 },          // 1角まで約900m。ペースが上がり差し
+    "新潟芝1000": { bias: { "逃げ": 1, "先行": 1, "差し": -0.5, "追込": -1.5 }, draw: -1.5 },     // 直線だけのコース。荒れていない外ラチ沿いを走れる外枠が圧倒的に有利(コタの動画で外枠有利の筆頭)
     "京都芝2000": { bias: { "逃げ": 1.5, "先行": 1.5, "差し": 0, "追込": -1.5 }, draw: 0.6 },      // 内回り・1角まで短い。内枠の先行
     "京都芝2200": { bias: { "逃げ": 0, "先行": 0.5, "差し": 1, "追込": 0 }, draw: 0.2 },           // 外回り。長くいい脚を使える馬
     "京都芝2400": { bias: { "逃げ": -1, "先行": 1, "差し": 0.5, "追込": -1 }, draw: 0.2 },         // 逃げは苦戦、後方一気も届きにくい
@@ -937,7 +939,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   function defaultBias(d) {
     const preset = /内回り/.test(d.courseNote || "") && /^京都芝1[46]00$/.test(`${d.place}${d.surface}${Number(d.dist)}`)
       ? null : COURSE_PRESET[`${d.place}${d.surface}${Number(d.dist)}`];
-    // 京都芝2000(内回り)は3勝クラス以上・重賞だと道中で息が入らず、前が残りにくい(秋華賞の過去10年は差し中心・馬番1〜4は不振。上昇・コータの動画、未検証)
+    // 京都芝2000(内回り)は3勝クラス以上・重賞だと道中で息が入らず、前が残りにくい(秋華賞の過去10年は差し中心・馬番1〜4は不振。上昇・コタの動画、未検証)
     if (preset && `${d.place}${d.surface}${Number(d.dist)}` === "京都芝2000" && (d.grade || /[3３]勝|オープン/.test(d.cond || "")))
       return { bias: { "逃げ": 0.5, "先行": 1, "差し": 0.5, "追込": -1 }, draw: 0.3 };
     if (preset) return { bias: Object.assign({}, preset.bias), draw: preset.draw };
@@ -978,7 +980,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       course: `${d.surface || "芝"} ${d.dir || ""} ${num(d.dist, "")}m${d.courseNote ? "(" + d.courseNote + ")" : ""}`.replace(/\s+/g, " "),
       cond: String(d.cond || ""), heads: d.horses.filter(h => !h.scratched).length,
       weather: String(d.weather || ""), goingDefault: 0, chaos: num(d.chaos, 8),
-      courseBias: cbias, drawBias: dbias, dayJp: d.dayBias && typeof d.dayBias === "object" ? num(d.dayBias.jp, 0) : 0, paceScale: PACE_BIG_PLACES.includes(String(d.place || "")) ? 1.25 : 1,
+      courseBias: cbias, drawBias: dbias, dayJp: d.dayBias && typeof d.dayBias === "object" ? num(d.dayBias.jp, 0) : 0, dayDraw: d.dayBias && typeof d.dayBias === "object" ? num(d.dayBias.draw, 0) : 0, paceScale: PACE_BIG_PLACES.includes(String(d.place || "")) ? 1.25 : 1,
       horses: d.horses.map(h => ({
         name: String(h.name), jockey: String(h.jockey || "未定"),
         style: STYLES_RUN.includes(h.style) ? h.style : "差し",
@@ -1016,7 +1018,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   let roster = clone(race.horses);
   let horses = roster;
   function defaultSettings() {
-    return { budget: 3000, style: "balance", evMin: "1.1", going: String(race.goingDefault || 0), manGoing: false, pace: "auto", chaos: race.chaos || 8, runs: String(MIN_RUNS), blend: 60 };
+    return { budget: 3000, style: "balance", evMin: "1.1", going: String(race.goingDefault || 0), manGoing: false, pace: "auto", chaos: race.chaos || 8, runs: String(MIN_RUNS), blend: 90, bv: 2 };
   }
   let settings = defaultSettings();
   // シミュレーション回数の下限(ユーザーの指定)。以前に保存した5,000回・20,000回はここまで引き上げる
@@ -1040,6 +1042,8 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       if (!raw) return loadOld();
       const d = JSON.parse(raw);
       if (d.settings) settings = Object.assign(settings, d.settings);
+      // オッズの比重は以前の初期値60%から90%に変えた(過去1,871レースの検証)。60%のまま保存されている設定は90%に上げる(手で別の値にした人はそのまま)
+      if (d.settings && d.settings.bv !== 2) { if (Number(d.settings.blend) === 60) settings.blend = 90; settings.bv = 2; }
       if (Array.isArray(d.horses)) {
         for (const h of roster) {
           const s = d.horses.find(x => x && x.name === h.name);
@@ -1204,9 +1208,10 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     };
   }
 
-  // 単勝オッズから見た「本当の」勝率。JRAでは人気薄ほど売れすぎる(本命-大穴バイアス)ので、
-  // 1/オッズ をそのまま使わず、べき乗で人気馬寄りに補正する
-  const FLB_GAMMA = 1.15;
+  // 単勝オッズから見た「本当の」勝率 = (1/オッズ)^FLB_GAMMA を合計1にしたもの。
+  // 以前は人気薄の売れすぎを見込んで1.15にしていたが、2026年4〜10月の平場1,871レースで1着を一番よく当てたのは1.0前後(1.15は人気馬を強く見すぎ)。
+  // 2・3着はさらに人気薄寄り(0.85・0.70)だが、シミュレーションは正規分布で走らせるので、勝率を合わせれば2・3着は自然にそうなる(検証済み)
+  const FLB_GAMMA = 1.0;
   function marketWin() {
     const raw = horses.map(h => Math.pow(1 / oddsOf(h), FLB_GAMMA));
     const t = raw.reduce((a, b) => a + b, 0);
@@ -1450,7 +1455,11 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     const evMin = Number(evMinV || settings.evMin);
     // 単勝は4〜9.9倍が長期の回収率がいちばん高い帯。3.9倍以下(勝ち切る難しさに対して戻りが小さい)と10倍以上(2・3着止まりが増える)は、期待値に余裕があるときだけ
     const tanBand = c => c.type !== "単勝" || (c.odds >= 4 && c.odds < 10) || c.ev >= evMin + 0.2;
-    const pool = cands.filter(c => st.types.includes(c.type) && c.p >= st.minP && tanBand(c));
+    // 3連単は◎(勝率1位)が1着のときのボーナスとして、◎の1着固定だけを買う。1着を入れ替える組(マルチの形)は点数が増えるのに配当が見合わない(出典: 馬情報/馬券の買い方_3連単とNGな買い方.md)
+    const tans = cands.filter(c => c.type === "単勝");
+    const head = tans.length ? tans.reduce((a, b) => (b.p > a.p ? b : a)).h[0] : -1;
+    const triHead = c => c.type !== "3連単" || c.h[0] === head;
+    const pool = cands.filter(c => st.types.includes(c.type) && c.p >= st.minP && tanBand(c) && triHead(c));
     const score = c => (c.ev - 1) * Math.sqrt(c.p);
     pool.sort((a, b) => score(b) - score(a));
     const perType = Math.max(2, Math.ceil(st.max / 2));
@@ -1905,10 +1914,19 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     if (/^(幸|三浦|今村|横山典|丹内|西村淳)/.test(h.jockey || "")) r.push(`${h.jockey}騎手(1番人気の勝率が平均より低い騎手。出典は 馬情報/騎手の得意・苦手.md)`);
     if (race.grade && /^戸崎/.test(h.jockey || "")) r.push(isG1() ? "戸崎騎手のG1(1〜3番人気の単勝回収率20%。3着は多いが勝ち切れない)" : "戸崎騎手の重賞(1番人気の勝率18.5%。2〜5番人気の方が勝ち切る)");
     if (/ルメール/.test(h.jockey || "") && Number(settings.going) >= 1) r.push("ルメール騎手で道悪(稍重〜不良は成績が落ちる)");
+    if (/^川田/.test(h.jockey || "") && turf && Number(settings.going) >= 1) r.push("川田騎手で芝の道悪(馬場が重いほど好走率・回収率が落ちる)");
     if (/秒差の完勝/.test(h.note || "")) r.push("前走の圧勝(昇級初戦が多く、条件がはまっただけのこともあって人気しすぎやすい)");
     if (/反動/.test(h.note || "")) r.push("前走の激走の反動(自己最高の走りの次は落ちやすい)");
     // 前走で有利な馬場・枠に恵まれて好走した人気馬は、フラットな条件で飛びやすい(コタのレース映像の見方の動画。馬情報/レース映像の見方.md)
     if (/千直の外枠の恩恵|馬場の恩恵/.test(h.note || "")) r.push("前走は馬場・枠の恩恵で好走(今回の条件で同じ走りができるとは限らない)");
+    // 3連勝以上の1番人気は、1着が並ぶ馬柱で実力以上に人気になりやすい(コタの動画。2026年の重賞では前走重賞1着の1番人気は9頭中6勝で裏付けなし、弱い注意として表示だけ)
+    const streak = Number(((h.note || "").match(/([3-9])連勝/) || [])[1]) || 0;
+    if (streak >= 3) r.push(`${streak}連勝中(連勝で人気が上乗せされやすい。勝ったレースが展開・馬場に恵まれていないか確認)`);
+    // 当日のトラックバイアスと逆の枠(コタの動画: どんなに強い馬でも馬場には勝てない)。能力値には dayBias.draw が入り済みで、ここは表示だけ
+    if (turf && total >= 10 && u >= 1) {
+      if (race.dayDraw >= 0.1 && u > total * 0.7 && h.style !== "逃げ") r.push("当日は内有利なのに外枠(外を回らされやすい)");
+      if (race.dayDraw <= -0.1 && u <= total * 0.3 && (h.style === "差し" || h.style === "追込")) r.push("当日は外有利なのに内枠の差し");
+    }
     return r;
   }
 
@@ -1926,6 +1944,27 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     return r.join(" / ");
   }
 
+  // G1だけに現れる危険な人気のサイン(出典: 馬情報/G1の危険な人気_10パターン.md のコタの動画)。馬カードの過去走から分かるものと、手で付けた g1Danger
+  function g1Signs(i, k) {
+    const h = horses[i], r = Array.isArray(h.g1Danger) ? [...h.g1Danger] : [];
+    const runs = (horseProfile(h.name).runs || []).filter(x => !race.date || String(x.date) < String(race.date));
+    const g1 = runs.filter(x => /^G(I|1)$/.test(x.grade || "")), ok = x => x.rank != null && x.rank <= 3;
+    const dist = Number(race.dist) || Number(((race.course || "").match(/(\d{3,4})m/) || [])[1]) || 0;
+    const best = Math.max(0, ...runs.filter(ok).map(x => Number(x.dist) || 0));
+    if (dist && best && best <= 1800 && dist >= best + 400) r.push(`距離適性(3着以内は${best}mまで)`);
+    if (g1.length >= 2 && !g1.some(ok) && runs.some(x => /^G(II|III|2|3)$/.test(x.grade || "") && x.rank === 1)) r.push(`G1の格がない(G2・G3は勝つがG1は${g1.length}戦で3着以内なし)`);
+    const key = s => String(s || "").normalize("NFKC").replace(/[\s()()]/g, "");
+    const same = runs.filter(x => key(x.race) === key(race.name)).length;
+    const age = Number((String(horseProfile(h.name).sexage || "").match(/(\d+)$/) || [])[1]) || 0;
+    if (same >= 2 && age >= 6) r.push(`同じG1のリピーター(${same + 1}回目・${age}歳)`);
+    if (g1.filter(x => x.rank >= 2 && x.rank <= 5).length >= 3 && !g1.some(x => x.rank === 1)) r.push("G1で惜しい競馬を繰り返す(2〜5着が3回以上・G1未勝利)");
+    if (g1.some(ok) && runs.length >= 2 && runs.slice(0, 2).every(x => x.rank != null && x.rank >= 6)) r.push("急激に衰えた(G1で好走歴があるのに直近2走が6着以下)");
+    if (runs[0] && runs[0].pop >= 7 && ok(runs[0])) r.push(`前走${runs[0].pop}番人気で激走→今回は人気(再現しにくい)`);
+    const favOdds = Math.min(...horses.map(oddsOf));
+    if (k > 0 && favOdds <= 2) r.push(`断然人気(${favOdds}倍)がいるときの${k + 1}番人気`);
+    return r;
+  }
+
   // 人気馬の不安材料(k は人気順の0始まり)。g1Hint と longshotHint で共通。不安材料が2つ以上か、強い材料が1つでもあれば「危ない」
   function popDoubts(i, k, s) {
     const h = horses[i], r = [], note = h.note || "";
@@ -1937,6 +1976,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     const age = Number((String(horseProfile(h.name).sexage || "").match(/(\d+)$/) || [])[1]) || 0;
     if (age >= 7) r.push(`${age}歳(ピークを過ぎ、世代交代の時期)`);
     if (/勝負付け/.test(note)) r.push("上位の馬と勝負付けが済んでいる");
+    if (isG1()) r.push(...g1Signs(i, k));
     const strong = ax <= -8 || (s.modelWin && s.mkWin && s.modelWin[i] < s.mkWin[i] * 0.7) || /反動|勝負付け/.test(note);
     return { r, bad: strong || r.length >= 2 };
   }
@@ -1988,6 +2028,9 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   // 少頭数(10頭未満)の荒れ方(出典: 馬情報/少頭数レースの狙い方.md のコタの動画)。1番人気+2・3番人気の一方が消せるときだけ勝負(能力値・買い目は変えない)
   function smallFieldHint(s) {
     const idx = [...Array(horses.length).keys()].filter(i => oddsOf(horses[i]) < 999).sort((a, b) => oddsOf(horses[a]) - oddsOf(horses[b]));
+    // 10〜12頭立てのG2・G3は堅くなりやすい(コタの「負ける人の13のNG」。2026年の12頭以下のG2・G3は18レース中15で上位人気どうしの決着、荒れは0。馬情報/負ける人の13のNG.md)
+    if (idx.length >= 10 && idx.length <= 12 && race.grade && !isG1() && !/^J/.test(race.grade))
+      return `${idx.length}頭立ての重賞は堅くなりやすい(2026年の12頭以下のG2・G3は18レース中15で上位人気どうしの決着)。弥生賞・阪神大賞典・オールカマー・セントライト記念・神戸新聞杯のような少頭数のG2は勝負しにくい。期待値の足りる買い目がなければ見送り向き`;
     if (idx.length >= 10 || idx.length < 6) return "";
     const nm = i => esc(horses[i].name);
     const front = frontCourse();
@@ -2032,12 +2075,37 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     // 大穴の軸候補: 8番人気以下かつ単勝20倍以上で、能力値からの3着以内率が8%以上・市場の1.3倍以上
     const holes = idx.filter((i, r) => r >= 7 && oddsOf(horses[i]) >= 20 && s.top3[i] >= 0.08 && s.top3[i] >= mk.place[i] * 1.3)
       .sort((x, y) => s.top3[y] / mk.place[y] - s.top3[x] / mk.place[x]).slice(0, 3);
-    const tag = i => { const m = (horses[i].note || "").match(/前走ハイレベル|ダートから芝替わり|芝からダート替わり|勝ち馬と[\d.]+秒差|距離短縮で初めての\d+m/g); return m ? `・${m.map(esc).join("・")}` : ""; };
+    const tag = i => { const m = (horses[i].note || "").match(/前走ハイレベル|ダートから芝替わり|芝からダート替わり|(?:芝|ダート)替わり2戦目|勝ち馬と[\d.]+秒差|距離短縮で初めての\d+m/g); return m ? `・${m.map(esc).join("・")}` : ""; };
     const why = x => `${nm(x.i)}(${x.r.map(esc).join("・")})`;
     const cand = holes.length
       ? `。軸の候補(能力値の3着以内率が市場より高い大穴): ${holes.map(i => `${nm(i)} ${oddsOf(horses[i]).toFixed(1)}倍(3着以内${pct(s.top3[i], 0)}${tag(i)})`).join(" / ")}。前走のレベルが高かった馬・芝ダートの替わりで変わる馬を優先`
       : "。ただ能力値で市場より高く評価できる大穴が見当たらない。根拠のない大穴を軸にはしない";
     return `${head}だが、${bad.map(why).join(" / ")}。この2頭が4着以下なら超高配当になる。大穴を軸に2・3着を狙う3連複(軸1頭流し)の形${cand}。年に数回しか当たらない狙いなので少額で`;
+  }
+
+  // 1番人気軸の穴流し(出典: 馬情報/1番人気軸で高配当を取る方法.md のコタの動画)。1番人気が信頼でき、2〜5番人気がそろって危ないレースは、
+  // 1番人気を軸に2列目を6〜10番人気の穴にすると高配当になりやすい。G1は g1Hint、10頭未満は smallFieldHint が見るので対象外(能力値・買い目は変えない)
+  function favHoleHint(s) {
+    const idx = [...Array(horses.length).keys()].filter(i => oddsOf(horses[i]) < 999).sort((a, b) => oddsOf(horses[a]) - oddsOf(horses[b]));
+    if (idx.length < 10 || isG1()) return "";
+    if (!race.grade && !/[3３]勝|オープン|OP|リステッド|\(L\)/.test(race.cond || "")) return "";
+    const nm = i => esc(horses[i].name);
+    const f = { i: idx[0], ...popDoubts(idx[0], 0, s) };
+    const rows = idx.slice(1, 5).map((i, k) => ({ i, ...popDoubts(i, k + 1, s) }));
+    const bad = rows.filter(x => x.bad);
+    if (f.bad || bad.length < 3) return "";
+    const why = x => `${nm(x.i)}(${x.r.map(esc).join("・")})`;
+    const head = `2〜5番人気のうち${bad.length}頭が危ない: ${bad.map(why).join(" / ")}`;
+    const fo = oddsOf(horses[idx[0]]), so = oddsOf(horses[idx[1]]);
+    if (fo < 1.5) return `${head}。ただ1番人気${nm(idx[0])}は単勝${fo.toFixed(1)}倍で、3着以内は濃厚でも配当が伸びにくい。期待値の足りる買い目がなければ見送り向き`;
+    if (fo >= 4 && so < fo * 1.3) return `${head}。ただ1番人気${nm(idx[0])}(${fo.toFixed(1)}倍)は2番人気と差がない混戦の1番人気で、3着以内率が低く軸にできない`;
+    // 2列目の候補: 6〜10番人気で能力値からの3着以内率8%以上。能力値の勝率が市場の8割未満(過剰人気の穴)は外す。11番人気以下は使わない
+    const holes = idx.slice(5, 10).filter(i => s.top3[i] >= 0.08 && !(s.modelWin && s.mkWin && s.modelWin[i] < s.mkWin[i] * 0.8))
+      .sort((x, y) => s.top3[y] - s.top3[x]).slice(0, 4);
+    const cand = holes.length
+      ? `。2列目の候補(6〜10番人気で3着以内率8%以上): ${holes.map(i => `${nm(i)} ${oddsOf(horses[i]).toFixed(1)}倍(3着以内${pct(s.top3[i], 0)})`).join(" / ")}。馬連なら1番人気から${holes.length}点`
+      : "。ただ6〜10番人気に能力値で3着以内を見込める穴がいない";
+    return `1番人気${nm(idx[0])}を軸に、2列目は穴だけにする形に近い。${head}。危ない人気馬が消えれば、1番人気が絡んでも配当が付く${cand}。人気薄は売れすぎやすいので、期待値で選んだ買い目と照らして広げすぎない`;
   }
 
   // オッズの断層: 単勝を人気順に並べ、隣の馬とのオッズが2倍以上離れる所でレースの勢力図を4つの型に分ける
@@ -2126,7 +2194,33 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
         ? `。券種別の軸: 馬連・ワイド・3連複とも${nm(t2)}(2着以内${pct(s.top2[t2], 0)}・3着以内${pct(s.top3[t3], 0)})`
         : `。券種別の軸: 馬連なら${nm(t2)}(2着以内${pct(s.top2[t2], 0)})、ワイド・3連複なら${nm(t3)}(3着以内${pct(s.top3[t3], 0)})`;
     }
-    return `${txt} ${top}${danger.length ? `。${danger.join("・")}は減点が多く、危険な人気馬の可能性` : ""}${byType}`;
+    // 善戦型(勝ちきれず2・3着が多い)は単勝の軸にしない。馬単・3連単の2・3着付けやワイド・3連複の軸向き(出典: 馬情報/単勝の買い方_コタ.md)
+    const zen = idx.filter(i => /善戦型/.test(horses[i].note || "")).map(i => esc(horses[i].name));
+    const zenTxt = zen.length ? `。${zen.join("・")}は勝ちきれない善戦型: 単勝の軸にせず、馬単・3連単の2・3着付けかワイド・3連複の軸に` : "";
+    return `${txt} ${top}${danger.length ? `。${danger.join("・")}は減点が多く、危険な人気馬の可能性` : ""}${byType}${zenTxt}`;
+  }
+
+  // 軸の型(出典: 馬情報/軸馬と相手の選び方.md のコタ「軸馬の選び方2選」)。1番人気が信頼できないときだけ、①危険な人気を消して残った2〜5番人気から軸、
+  // ②逆転できる穴(単勝7倍以上で能力値の単勝期待値が高い)がいれば穴を軸、を示す。1番人気が信頼できるレースでは何もしない(能力値・買い目は変えない)。G1は g1Hint に任せる
+  function axisTypeHint(s, mk) {
+    if (isG1()) return "";
+    const idx = [...Array(horses.length).keys()].filter(i => oddsOf(horses[i]) < 999).sort((a, b) => oddsOf(horses[a]) - oddsOf(horses[b]));
+    if (idx.length < 8) return "";
+    const nm = i => esc(horses[i].name);
+    const rows = idx.slice(0, 5).map((i, k) => ({ i, k, ...popDoubts(i, k, s) }));
+    if (!rows[0].bad) return "";
+    const why = `1番人気${nm(rows[0].i)}が信頼できない(${rows[0].r.map(esc).join("・")})`;
+    const rest = rows.slice(1).filter(x => !x.bad).sort((a, b) => s.top3[b.i] - s.top3[a.i]);
+    const ax = rest.length
+      ? `①残った2〜5番人気から軸: ${rest.slice(0, 2).map(x => `${nm(x.i)}(${x.k + 1}番人気・3着以内${pct(s.top3[x.i], 0)})`).join(" / ")}`
+      : "①2〜5番人気にも不安が多く、人気馬から軸は選べない";
+    // 逆転できる穴: 単勝7倍以上で、能力値の勝率×単勝が1.3以上かつ市場の勝率の1.3倍以上
+    const holes = idx.filter(i => oddsOf(horses[i]) >= 7 && s.win[i] * oddsOf(horses[i]) >= 1.3 && s.win[i] >= mk.q[i] * 1.3)
+      .sort((a, b) => s.win[b] * oddsOf(horses[b]) - s.win[a] * oddsOf(horses[a])).slice(0, 2);
+    const hole = holes.length
+      ? `。②逆転できる穴もいるので穴を軸にしてもよい: ${holes.map(i => `${nm(i)} ${oddsOf(horses[i]).toFixed(1)}倍(勝率${pct(s.win[i], 0)})`).join(" / ")}`
+      : "。②単勝7倍以上で能力値が市場より高い穴はいないので、穴を軸にはしない";
+    return `${why}。${ax}${hole}`;
   }
 
   // ワイドの形(出典: 馬情報/馬券の買い方_ワイド.md のコタの動画)。危ない1番人気がいるレースは、2〜4番人気の実力上位1頭→穴3頭のワイド3点。
@@ -2868,7 +2962,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   // 騎手の得意・苦手(過去3年。YouTubeの騎手解説動画の要約で未検証)。詳しくは 馬情報/騎手の得意・苦手.md
   const JOCKEY_TIPS = {
     "ルメール": { rate: "27.8%", good: "東京(芝2400mは複勝率74%)・芝マイル・芝2000m以上(京都外回り)・新潟・逃げ先行・重賞の8枠(単勝回収率125%)", bad: "芝1200m前後・道悪(稍重〜不良)・ダート・追込・高齢馬・阪神中京", pop: "1番人気は堅い。7番人気以下は0勝。秋(10〜12月)の中長距離重賞で狙い、雨なら嫌う" },
-    "川田将雅": { rate: "—", good: "先行(4角5番手以内)・ダート・阪神京都の芝1600m・小回り芝2000mの重賞(コーナー4つの重賞は単勝回収率141%)", bad: "芝2500m以上(重賞では単勝を買わない)", pop: "—" },
+    "川田将雅": { rate: "—", good: "先行(4角5番手以内)・ダート・阪神京都の芝1600m・小回り芝2000mの重賞(コーナー4つの重賞は単勝回収率141%)", bad: "芝2500m以上(重賞では単勝を買わない)・芝の道悪", pop: "—" },
     "岩田望来": { rate: "—", good: "ダート(2026年のダートリーディング・勝率21%)・阪神京都(勝率16〜17%)・乗り替わりでも割り引かない", bad: "関東(東京の勝率7.8%)。2400m以上の重賞勝ちはまだない", pop: "—" },
     "坂井瑠星": { rate: "15.5%", good: "芝1200m前後(勝率22%)・ダート中距離・逃げ先行・内枠・500kg以上の大型馬・京都・大久保龍厩舎", bad: "芝長距離・中山・差し馬(重賞の芝は勝率5.6%、ダートは15.8%)", pop: "上位人気は信頼(G1の1〜3番人気はほぼ3着以内で軸向き)。9番人気以下は0勝" },
     "武豊": { rate: "14.4%", good: "ダート中距離・芝1200m前後・京都・夏の北海道・武英智/友道厩舎", bad: "芝1400m", pop: "騎手人気で売れやすい。10番人気以下は0勝" },

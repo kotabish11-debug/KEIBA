@@ -38,6 +38,11 @@ for my $h (@hs) {
   $h->{_score} = $s;
 }
 my @pred = sort { $b->{_score} <=> $a->{_score} } @hs;
+# 印の順番はシミュレーターと同じ(star.pl の勝率順: 実際のオッズがあれば90%の比重で混ぜたもの)。star.pl が動かなければ能力値の点数順
+{ (my $dir = __FILE__) =~ s{[\\/][^\\/]*$}{}; $dir = '.' if $dir eq __FILE__;
+  my $out = `perl "$dir/star.pl" "$rf" "${\($mf // '')}" 2>/dev/null`;
+  my $st = eval { JSON::PP->new->utf8->decode($out) };
+  if ($st && ref $st->{order} eq 'ARRAY') { my %pos; @pos{@{$st->{order}}} = 0 .. $#{$st->{order}}; @pred = sort { ($pos{$a->{name}} // 99) <=> ($pos{$b->{name}} // 99) || $b->{_score} <=> $a->{_score} } @hs } }
 my @marks = ('◎', '○', '▲', '△', '△');
 $pred[$_]{_mark} = $marks[$_] for 0 .. ($#pred < 4 ? $#pred : 4);
 $pred[$_]{_prank} = $_ + 1 for 0 .. $#pred;

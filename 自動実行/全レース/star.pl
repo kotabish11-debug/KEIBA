@@ -36,13 +36,19 @@ for (1 .. $R) {
 my @pw = map { $_ / $R } @win; my @p3 = map { $_ / $R } @top3;
 my $real = !grep { $_->{oddsKari} || !($_->{odds} && $_->{odds} >= 1) } @hs;
 if ($real) {
-  # オッズを60%の比重で混ぜる(シミュレーターの初期設定と同じ)。3着以内率は混ぜた勝率からHarville式で出す
-  my @mk = map { (1 / $_->{odds}) ** 1.15 } @hs; my $s = 0; $s += $_ for @mk; @mk = map { $_ / $s } @mk;
-  my @lg = map { 0.4 * log($pw[$_] > 0 ? $pw[$_] : 0.3 / $R) + 0.6 * log($mk[$_]) } 0 .. $n - 1;
+  # オッズを90%の比重で、補正せず(1/オッズ)混ぜる(シミュレーターの初期設定と同じ。馬情報/的中率を上げるための検証.md)
+  my @mk = map { 1 / $_->{odds} } @hs; my $s = 0; $s += $_ for @mk; @mk = map { $_ / $s } @mk;
+  my @lg = map { 0.1 * log($pw[$_] > 0 ? $pw[$_] : 0.3 / $R) + 0.9 * log($mk[$_]) } 0 .. $n - 1;
   my $mx = (sort { $b <=> $a } @lg)[0]; my @e = map { exp($_ - $mx) } @lg; $s = 0; $s += $_ for @e; @pw = map { $_ / $s } @e;
+  # 3着以内率: 2着・3着は人気薄も来やすいので、残りの馬から選ぶ確率を勝率の0.85乗・0.70乗にする(そのままのHarville式は人気馬の3着以内を高く見すぎる。
+  # 過去1,871レースで「85%」と出た馬が実際77%だった。この割引で82%とほぼ合う)
+  my $pick = sub { my ($g, @idx) = @_; my @x = map { $pw[$_] ** $g } @idx; my $t = 0; $t += $_ for @x; map { $_ / $t } @x };
   @p3 = (0) x $n;
-  for my $i (0 .. $n - 1) { for my $j (0 .. $n - 1) { next if $j == $i; for my $k (0 .. $n - 1) { next if $k == $i || $k == $j;
-    my $p = $pw[$i] * $pw[$j] / (1 - $pw[$i]) * $pw[$k] / (1 - $pw[$i] - $pw[$j]); $p3[$i] += $p; $p3[$j] += $p; $p3[$k] += $p } } }
+  for my $i (0 .. $n - 1) {
+    $p3[$i] += $pw[$i]; my @r2 = grep { $_ != $i } 0 .. $n - 1; my @q2 = $pick->(0.85, @r2);
+    for my $a (0 .. $#r2) { my $j = $r2[$a]; my $pij = $pw[$i] * $q2[$a]; $p3[$j] += $pij;
+      my @r3 = grep { $_ != $i && $_ != $j } 0 .. $n - 1; my @q3 = $pick->(0.70, @r3); $p3[$r3[$_]] += $pij * $q3[$_] for 0 .. $#r3 }
+  }
 }
 my ($hon) = sort { $pw[$b] <=> $pw[$a] } 0 .. $n - 1;
 my ($fav) = sort { ($hs[$a]{odds} // 999) <=> ($hs[$b]{odds} // 999) } 0 .. $n - 1;
@@ -60,4 +66,5 @@ push @risk, '川田騎手で芝の道悪' if ($fh->{jockey} // '') =~ /^川田/ 
 push @risk, '戸崎騎手の重賞' if ($fh->{jockey} // '') =~ /^戸崎/ && ($race->{grade} // '') ne '';
 my $star = ($p3[$hon] >= $thr && $hon == $fav && !@risk) ? 1 : 0;
 print JSON::PP->new->canonical->encode({ star => ($star ? JSON::PP::true : JSON::PP::false), starProb => int($p3[$hon] * 1000 + 0.5) / 1000, favRisk => \@risk,
-  honmei => $hs[$hon]{name}, threshold => $thr, oddsReal => ($real ? JSON::PP::true : JSON::PP::false) }), "\n";
+  honmei => $hs[$hon]{name}, threshold => $thr, oddsReal => ($real ? JSON::PP::true : JSON::PP::false),
+  order => [map { $hs[$_]{name} } sort { $pw[$b] <=> $pw[$a] } 0 .. $n - 1] }), "\n";   # 勝率の高い順(振り返りの◎○▲に使う)
