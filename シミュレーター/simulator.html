@@ -937,6 +937,9 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   function defaultBias(d) {
     const preset = /内回り/.test(d.courseNote || "") && /^京都芝1[46]00$/.test(`${d.place}${d.surface}${Number(d.dist)}`)
       ? null : COURSE_PRESET[`${d.place}${d.surface}${Number(d.dist)}`];
+    // 京都芝2000(内回り)は3勝クラス以上・重賞だと道中で息が入らず、前が残りにくい(秋華賞の過去10年は差し中心・馬番1〜4は不振。上昇・コータの動画、未検証)
+    if (preset && `${d.place}${d.surface}${Number(d.dist)}` === "京都芝2000" && (d.grade || /[3３]勝|オープン/.test(d.cond || "")))
+      return { bias: { "逃げ": 0.5, "先行": 1, "差し": 0.5, "追込": -1 }, draw: 0.3 };
     if (preset) return { bias: Object.assign({}, preset.bias), draw: preset.draw };
     const small =["中山", "福島", "小倉", "函館", "札幌"].includes(d.place) || /内回り/.test(d.courseNote || "");
     if (d.surface === "障") return { bias: { "逃げ": 1, "先行": 1, "差し": 0, "追込": -1.5 }, draw: 0.3 };
@@ -1892,10 +1895,97 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     if (dirt && total >= 10 && u >= 1 && u <= total * 0.3 && h.style !== "逃げ" && h.style !== "先行") r.push("ダートの内枠で砂をかぶりやすい");
     if (turf && dist && dist <= 1400) r.push("芝1400m以下(短いほど1番人気が負けやすい)");
     if (/^(幸|三浦|今村|横山典|丹内|西村淳)/.test(h.jockey || "")) r.push(`${h.jockey}騎手(1番人気の勝率が平均より低い騎手。出典は 馬情報/騎手の得意・苦手.md)`);
-    if (race.grade && /^戸崎/.test(h.jockey || "")) r.push("戸崎騎手の重賞(1番人気の勝率18.5%。2〜5番人気の方が勝ち切る)");
+    if (race.grade && /^戸崎/.test(h.jockey || "")) r.push(isG1() ? "戸崎騎手のG1(1〜3番人気の単勝回収率20%。3着は多いが勝ち切れない)" : "戸崎騎手の重賞(1番人気の勝率18.5%。2〜5番人気の方が勝ち切る)");
     if (/ルメール/.test(h.jockey || "") && Number(settings.going) >= 1) r.push("ルメール騎手で道悪(稍重〜不良は成績が落ちる)");
     if (/秒差の完勝/.test(h.note || "")) r.push("前走の圧勝(昇級初戦が多く、条件がはまっただけのこともあって人気しすぎやすい)");
+    if (/反動/.test(h.note || "")) r.push("前走の激走の反動(自己最高の走りの次は落ちやすい)");
     return r;
+  }
+
+  // G1で買える騎手・買えない騎手(出典: 馬情報/騎手の得意・苦手.md のコタの動画)。能力値は変えず、1〜3番人気の坂井・戸崎の券種での置き方だけを示す
+  function isG1() { return /^(J・)?(G|Jpn)(I|1)$/.test(race.grade || ""); }
+  function g1JockeyHint() {
+    if (!isG1()) return "";
+    const idx = [...Array(horses.length).keys()].filter(i => oddsOf(horses[i]) < 999).sort((a, b) => oddsOf(horses[a]) - oddsOf(horses[b])).slice(0, 3);
+    const r = [];
+    idx.forEach(i => {
+      const h = horses[i], nm = esc(h.name);
+      if (/^坂井/.test(h.jockey || "")) r.push(`${nm}(坂井): G1の1〜3番人気はほぼ3着以内で、ワイド・3連複の軸にしてよい`);
+      if (/^戸崎/.test(h.jockey || "")) r.push(`${nm}(戸崎): G1の1〜3番人気は単勝回収率20%。3着は多いが勝ち切れないので、単勝・馬単・3連単の1着には置かず2〜3着(ヒモ)に`);
+    });
+    return r.join(" / ");
+  }
+
+  // G1の荒れ方(出典: 馬情報/G1の高配当パターン.md のコタの動画)。1〜3番人気のどれが危ないかで高配当の型を見分ける(能力値・買い目は変えない)
+  function g1Hint(s) {
+    if (!isG1()) return "";
+    const idx = [...Array(horses.length).keys()].filter(i => oddsOf(horses[i]) < 999).sort((a, b) => oddsOf(horses[a]) - oddsOf(horses[b])).slice(0, 3);
+    if (idx.length < 3) return "";
+    const nm = i => esc(horses[i].name);
+    const rows = idx.map((i, k) => {
+      const h = horses[i], r = [], note = h.note || "";
+      let strong = false;
+      if (k === 0) r.push(...favRisks(i));
+      else if (/反動/.test(note)) r.push("前走の激走の反動");
+      const ax = axisChecks(h).reduce((a, x) => a + x.pt, 0);
+      if (ax <= -5) r.push(`軸の減点${ax}`);
+      if (s.modelWin && s.mkWin && s.modelWin[i] < s.mkWin[i] * 0.8) r.push("能力値からの勝率が市場より低い");
+      const age = Number((String(horseProfile(h.name).sexage || "").match(/(\d+)$/) || [])[1]) || 0;
+      if (age >= 7) r.push(`${age}歳(ピークを過ぎ、世代交代の時期)`);
+      if (/勝負付け/.test(note)) r.push("上位の馬と勝負付けが済んでいる");
+      if (ax <= -8 || (s.modelWin && s.mkWin && s.modelWin[i] < s.mkWin[i] * 0.7) || /反動|勝負付け/.test(note)) strong = true;
+      return { i, r, bad: strong || r.length >= 2 };
+    });
+    const [f, a, b] = rows;
+    const why = x => `${nm(x.i)}(${x.r.map(esc).join("・")})`;
+    if (f.bad && !a.bad && !b.bad)
+      return `型1「危ない1番人気だけが飛ぶ」に近い: ${why(f)}。1番人気が4着以下なら、残りの上位人気から流すだけで高配当になる。穴を探すより、2〜5番人気の能力比べに時間を使う`;
+    if (!f.bad && a.bad && b.bad) {
+      const pop = new Set(idx);
+      const holes = [...Array(s.n).keys()].filter(i => !pop.has(i) && s.top3[i] >= 0.08).sort((x, y) => s.top3[y] - s.top3[x]).slice(0, 6);
+      return `型2「1番人気は堅く、2・3番人気が危ない」に近い: ${why(a)}・${why(b)}。1番人気を軸に2・3番人気を外すと、3着はどの馬が来てもおかしくない(G1は2・3着に大穴が来やすい)${holes.length ? `。3列目の候補は3着以内率8%以上の${holes.map(nm).join("・")}` : ""}。ただし人気薄は売れすぎやすいので、期待値で選んだ買い目と照らして広げすぎない`;
+    }
+    if (f.bad && a.bad && b.bad)
+      return `1〜3番人気がそろって危ない(${[f, a, b].map(why).join(" / ")})。ただ1〜3番人気が全滅する大荒れはG1の5%以下(動画の集計)。狙いすぎず、見送りか少額で`;
+    if (!f.bad && !a.bad && !b.bad)
+      return "1〜3番人気に目立つ不安がなく、低配当になりやすいG1。高配当は狙いにくいので、期待値の足りる買い目がなければ見送って観戦向き";
+    const bad = rows.filter(x => x.bad);
+    return f.bad
+      ? `1番人気と${nm(bad[1].i)}が危ない: ${bad.map(why).join(" / ")}。型1の変形で、残りの上位人気から流せば配当が付きやすい`
+      : `1番人気は堅く、${why(bad[0])}が危ない。型2ほどは荒れにくいが、相手から${nm(bad[0].i)}を外すと配当が上がる`;
+  }
+
+  // 少頭数(10頭未満)の荒れ方(出典: 馬情報/少頭数レースの狙い方.md のコタの動画)。1番人気+2・3番人気の一方が消せるときだけ勝負(能力値・買い目は変えない)
+  function smallFieldHint(s) {
+    const idx = [...Array(horses.length).keys()].filter(i => oddsOf(horses[i]) < 999).sort((a, b) => oddsOf(horses[a]) - oddsOf(horses[b]));
+    if (idx.length >= 10 || idx.length < 6) return "";
+    const nm = i => esc(horses[i].name);
+    const cb = race.courseBias || {};
+    const front = ((cb["逃げ"] || 0) + (cb["先行"] || 0) - (cb["差し"] || 0) - (cb["追込"] || 0)) / 2 >= 1;
+    const rows = idx.slice(0, 3).map((i, k) => {
+      const h = horses[i], r = k === 0 ? favRisks(i) : [];
+      if (front && (h.style === "差し" || h.style === "追込")) r.push(`前残りのコースで${h.style}`);
+      const ax = axisChecks(h).reduce((a, x) => a + x.pt, 0);
+      if (ax <= -5) r.push(`軸の減点${ax}`);
+      const low = s.modelWin && s.mkWin && s.modelWin[i] < s.mkWin[i] * 0.8;
+      if (low) r.push("能力値からの勝率が市場より低い");
+      const strong = (front && (h.style === "差し" || h.style === "追込")) || (s.modelWin && s.mkWin && s.modelWin[i] < s.mkWin[i] * 0.7);
+      return { i, r, bad: strong || r.length >= 2 };
+    });
+    const [f, a, b] = rows;
+    const why = x => `${nm(x.i)}(${x.r.map(esc).join("・")})`;
+    const head = `${idx.length}頭立て`;
+    if (!f.bad)
+      return `${head}で1番人気に消せる材料が足りない。少頭数は1番人気が4着以下にならないと高配当はまず出ない(8〜9頭立ての3連単万馬券率は8.8%)。期待値の足りる買い目がなければ見送り向き`;
+    if (!a.bad && !b.bad)
+      return `${head}で1番人気は危ない: ${why(f)}。ただ2・3番人気に不安がなく、残りの上位人気で決まりやすいので配当は伸びにくい`;
+    const keep = [a, b].filter(x => !x.bad).map(x => x.i);
+    const pop = new Set(idx.slice(0, 3));
+    const hole = idx.slice(5).sort((x, y) => s.top3[y] - s.top3[x])[0];
+    const runner = idx.filter(i => !pop.has(i) && i !== hole && (horses[i].style === "逃げ" || horses[i].style === "先行")).sort((x, y) => s.top3[y] - s.top3[x])[0];
+    const box = [...keep, hole, runner].filter(i => i !== undefined).slice(0, 3);
+    const bads = rows.filter(x => x.bad).map(why).join(" / ");
+    return `${head}で荒れる条件に近い: ${bads}${keep.length ? `。${keep.map(nm).join("・")}は信用` : "。1〜3番人気がそろって危ない(狙いすぎない)"}。穴は6番人気以下から${box.length === 3 ? `(例: ${box.map(nm).join("・")}の3連単ボックス6点)` : ""}${front ? "。前残りのコースなので、前に行ける馬を優先" : ""}`;
   }
 
   // オッズの断層: 単勝を人気順に並べ、隣の馬とのオッズが2倍以上離れる所でレースの勢力図を4つの型に分ける
@@ -2030,6 +2120,12 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     if (trio) v += `<br><span class="muted small">3連複の向き: ${trio}</span>`;
     const ax = axisHint(s);
     if (ax) v += `<br><span class="muted small">軸の減点(1〜3番人気): ${ax}</span>`;
+    const g1 = g1Hint(s);
+    if (g1) v += `<br><span class="muted small">G1の荒れ方: ${g1}</span>`;
+    const sf = smallFieldHint(s);
+    if (sf) v += `<br><span class="muted small">少頭数の荒れ方: ${sf}</span>`;
+    const g1j = g1JockeyHint();
+    if (g1j) v += `<br><span class="muted small">G1の騎手: ${g1j}</span>`;
     const conv = convHint(ev, bets, s);
     if (conv) v += `<br><span class="muted small">収束と上振れ: ${conv}</span>`;
     $("verdict").innerHTML = v;
@@ -2656,14 +2752,14 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     "ルメール": { rate: "27.8%", good: "東京(芝2400mは複勝率74%)・芝マイル・芝2000m以上(京都外回り)・新潟・逃げ先行・重賞の8枠(単勝回収率125%)", bad: "芝1200m前後・道悪(稍重〜不良)・ダート・追込・高齢馬・阪神中京", pop: "1番人気は堅い。7番人気以下は0勝。秋(10〜12月)の中長距離重賞で狙い、雨なら嫌う" },
     "川田将雅": { rate: "—", good: "先行(4角5番手以内)・ダート・阪神京都の芝1600m・小回り芝2000mの重賞(コーナー4つの重賞は単勝回収率141%)", bad: "芝2500m以上(重賞では単勝を買わない)", pop: "—" },
     "岩田望来": { rate: "—", good: "ダート(2026年のダートリーディング・勝率21%)・阪神京都(勝率16〜17%)・乗り替わりでも割り引かない", bad: "関東(東京の勝率7.8%)。2400m以上の重賞勝ちはまだない", pop: "—" },
-    "坂井瑠星": { rate: "15.5%", good: "芝1200m前後(勝率22%)・ダート中距離・逃げ先行・内枠・500kg以上の大型馬・京都・大久保龍厩舎", bad: "芝長距離・中山・差し馬(重賞の芝は勝率5.6%、ダートは15.8%)", pop: "上位人気は信頼。9番人気以下は0勝" },
+    "坂井瑠星": { rate: "15.5%", good: "芝1200m前後(勝率22%)・ダート中距離・逃げ先行・内枠・500kg以上の大型馬・京都・大久保龍厩舎", bad: "芝長距離・中山・差し馬(重賞の芝は勝率5.6%、ダートは15.8%)", pop: "上位人気は信頼(G1の1〜3番人気はほぼ3着以内で軸向き)。9番人気以下は0勝" },
     "武豊": { rate: "14.4%", good: "ダート中距離・芝1200m前後・京都・夏の北海道・武英智/友道厩舎", bad: "芝1400m", pop: "騎手人気で売れやすい。10番人気以下は0勝" },
     "松山弘平": { rate: "13.8%", good: "ダート中距離(勝ち数1位)・芝1800m・逃げ先行・小倉・G2(勝率15.9%)・杉山晴/橋口/池添学厩舎", bad: "芝長距離・東京中山・外枠の差し馬", pop: "10番人気以下は0勝。重賞は3番人気以下でもよく勝つ" },
     "北村友一": { rate: "10.8%", good: "芝1800〜2000m・京都中京・夏の北海道・斉藤崇/高野/藤原英厩舎", bad: "小倉・芝1200m・牝馬", pop: "1番人気の勝率41.8%で堅い。12番人気以下は0勝" },
     "西村淳也": { rate: "10.4%", good: "芝マイル〜1800m・ダート中距離・逃げ先行・中京・中内田/杉山晴/高野厩舎・ロードカナロア産駒・重賞は芝(15勝、ダート0勝)", bad: "追込(勝ちの2%)・東京・関東のダート(勝率4%前後)", pop: "1番人気の勝率29.4%でやや低い。8番人気以下の穴は多い" },
     "横山典弘": { rate: "10.1%", good: "芝1800m・差し追込・東京・昆/松永幹/安田翔/菊沢厩舎", bad: "芝1200m前後(勝率2%)", pop: "1番人気の勝率28%。重賞は2・3着が多くヒモ向き。11番人気以下は0勝" },
     "高杉吏麒": { rate: "9.3%", good: "芝・ダートの1400m以下・先行・中京・牡馬", bad: "芝マイル・芝1800m", pop: "人気でも穴でも良い(8番人気以下の勝ち数3位)" },
-    "戸崎圭太": { rate: "—", good: "外枠(特にダート。8枠の勝率23.1%)・東京ダ1400/1600mの3勝クラス以上・芝ダートとも勝率15%超", bad: "内枠で馬群に包まれる形", pop: "重賞は1番人気(勝率18.5%)より2〜5番人気で買う" },
+    "戸崎圭太": { rate: "—", good: "外枠(特にダート。8枠の勝率23.1%)・東京ダ1400/1600mの3勝クラス以上・芝ダートとも勝率15%超", bad: "内枠で馬群に包まれる形", pop: "重賞は1番人気(勝率18.5%)より2〜5番人気で買う。G1の1〜3番人気は単勝回収率20%で、1着に置かずヒモに" },
     "津村明秀": { rate: "8.4%", good: "芝1800m・芝長距離・ダート短距離・中山福島・林徹/手塚厩舎", bad: "芝1400m・関西の競馬場", pop: "穴が多い(単勝回収率99%)。ヒモで押さえる" },
     "三浦皇成": { rate: "8.3%", good: "ダート全般・中山福島・差し・武井厩舎", bad: "芝長距離・重賞", pop: "1番人気の勝率25.5%。2着が多い" },
     "田辺裕信": { rate: "8.2%", good: "芝2200m以上・芝マイル・追込・福島(重賞5勝すべて)", bad: "芝1200m前後(1着では買わない)・芝1400m", pop: "人気別は平均どおり" },
