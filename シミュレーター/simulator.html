@@ -1882,6 +1882,12 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     return m;
   }
 
+  // 前残りのコース: 逃げ・先行の補正が差し・追込より平均1以上大きい
+  function frontCourse() {
+    const cb = race.courseBias || {};
+    return ((cb["逃げ"] || 0) + (cb["先行"] || 0) - (cb["差し"] || 0) - (cb["追込"] || 0)) / 2 >= 1;
+  }
+
   // 1番人気の不安材料(過去3年・約1万レースの1番人気の成績で、平均より明らかに悪い条件)。出典は 馬情報/危険な人気馬と単勝の狙い方.md
   function favRisks(i) {
     const h = horses[i], r = [];
@@ -1889,6 +1895,8 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     const dist = Number(((race.course || "").match(/(\d{3,4})m/) || [])[1]) || 0;
     const total = roster.length, u = Number(h.umaban);
     if (h.style === "追込") r.push("追込(1番人気は後ろから行くほど成績が悪い)");
+    // 前残りのコースで差しの1番人気は、外から差しに回って届かないことがある(コタの「1点で馬連万馬券」。馬情報/資金管理と買うレースの選び方.md)
+    if (h.style === "差し" && frontCourse()) r.push("前残りのコースで差し(外に回って届かないことがある)");
     if (/前走逃げて好走/.test(h.note || "")) r.push("前走逃げて好走(次走は再現しにくい)");
     if (h.weight && h.weight < 420) r.push(`馬体重${h.weight}kg(420kg未満の1番人気は成績が悪い)`);
     if (turf && Number(settings.going) >= 2) r.push("芝の重・不良(馬場が悪いほど1番人気が負けやすい)");
@@ -1960,11 +1968,10 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     const idx = [...Array(horses.length).keys()].filter(i => oddsOf(horses[i]) < 999).sort((a, b) => oddsOf(horses[a]) - oddsOf(horses[b]));
     if (idx.length >= 10 || idx.length < 6) return "";
     const nm = i => esc(horses[i].name);
-    const cb = race.courseBias || {};
-    const front = ((cb["逃げ"] || 0) + (cb["先行"] || 0) - (cb["差し"] || 0) - (cb["追込"] || 0)) / 2 >= 1;
+    const front = frontCourse();
     const rows = idx.slice(0, 3).map((i, k) => {
       const h = horses[i], r = k === 0 ? favRisks(i) : [];
-      if (front && (h.style === "差し" || h.style === "追込")) r.push(`前残りのコースで${h.style}`);
+      if (front && (h.style === "差し" || h.style === "追込") && !(k === 0 && h.style === "差し")) r.push(`前残りのコースで${h.style}`);
       const ax = axisChecks(h).reduce((a, x) => a + x.pt, 0);
       if (ax <= -5) r.push(`軸の減点${ax}`);
       const low = s.modelWin && s.mkWin && s.modelWin[i] < s.mkWin[i] * 0.8;
