@@ -257,7 +257,11 @@ for my $i (0 .. $n - 1) {
     }
     # 枠の替わり: 芝は内→外が不利、ダートは外→内が不利(砂をかぶる)。逆は巻き返し
     my $u = $hh{umaban};
-    if (defined $u && $p->{umaban} && $p->{heads} && ($p->{surf} // '') eq $surf && $surf ne '障') {
+    # 新潟の直線1000m(千直)は外ラチ沿いの外枠が有利で、芝の「内が有利」と逆なので上の替わりには入れない。
+    # 前走千直の外枠で好走した馬は枠の恩恵が大きく、千直以外では割り引く(コタのレース映像の見方の動画。2026年の平場では該当9頭で検証できず)
+    my $psen = ($p->{place} // '') eq '新潟' && ($p->{surf} // '') eq '芝' && ($p->{dist} // 0) == 1000;
+    if ($psen && !$straight && $p->{umaban} && $p->{heads} && $p->{umaban} > $p->{heads} * 0.7 && $r <= 3) { $adj -= 2; push @why, '前走は千直の外枠の恩恵で好走' }
+    if (defined $u && $p->{umaban} && $p->{heads} && ($p->{surf} // '') eq $surf && $surf ne '障' && !$psen && !$straight) {
       my $pin = $p->{umaban} <= $p->{heads} * 0.3; my $pout = $p->{umaban} > $p->{heads} * 0.7;
       my $nin = $u <= $n * 0.3; my $nout = $u > $n * 0.7;
       my ($good_from, $good_to) = $surf eq '芝' ? ($pin, $nout) : ($pout, $nin);
