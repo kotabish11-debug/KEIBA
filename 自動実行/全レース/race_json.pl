@@ -168,6 +168,17 @@ for my $i (0 .. $n - 1) {
   my $jk = $jockey[$i] // ''; $jk =~ s/^[A-Za-z]\.//;
   for my $k (keys %J_OIKOMI) { if ($style eq '追込' && index($jk, $k) == 0) { $ja += $J_OIKOMI{$k}; push @jw, "${k}騎手は追込が苦手($J_OIKOMI{$k})" } }
   for my $k (keys %J_HINBA) { if (($sexage[$i] // '') =~ /^牝/ && index($jk, $k) == 0) { $ja += $J_HINBA{$k}; push @jw, "${k}騎手は牝馬" . ($J_HINBA{$k} > 0 ? "が得意(+" : "が苦手(") . "$J_HINBA{$k})" } }
+  # 騎手×馬場・枠・馬格・産駒(出典: 馬情報/騎手の得意・苦手.md「7人の癖」。コースの連対率には入らない条件だけ)
+  my $u0 = ($umaban[$i] // '') =~ /^(\d+)$/ ? $1 : 0;
+  my $outer = $u0 && $n >= 10 && $u0 > $n * 0.7; my $inner = $u0 && $n >= 10 && $u0 <= $n * 0.3;
+  my ($bw0) = ($bw[$i] // '') =~ /^(\d{3})/;
+  if (index($jk, 'ルメール') == 0 && defined $baba && $baba ne '良') { $ja -= 2; push @jw, "ルメール騎手は道悪が苦手(-2)" }
+  if (index($jk, '戸崎') == 0 && $surf eq 'ダ' && $outer) { $ja += 2; push @jw, "戸崎騎手はダートの外枠が得意(+2)" }
+  if (index($jk, '戸崎') == 0 && $inner && $style !~ /逃げ|先行/) { $ja -= 1; push @jw, "戸崎騎手は内枠で包まれるのが苦手(-1)" }
+  if (index($jk, '坂井') == 0 && $style eq '差し') { $ja -= 1; push @jw, "坂井騎手は差し馬が苦手(-1)" }
+  if (index($jk, '坂井') == 0 && defined $bw0 && $bw0 >= 500) { $ja += 1; push @jw, "坂井騎手は500kg以上の大型馬が得意(+1)" }
+  if (index($jk, '松山') == 0 && $outer && $style =~ /差し|追込/) { $ja -= 1; push @jw, "松山騎手は外枠の差し馬が苦手(-1)" }
+  if (index($jk, '西村淳') == 0 && ($sire{$name} // '') eq 'ロードカナロア') { $ja += 2; push @jw, "西村淳騎手はロードカナロア産駒と手が合う(+2)" }
   $kishu = clamp($kishu + clamp($ja, -5, 5), 50, 95) if $ja;
   my $heavy = 0; my $g = $rgoing[$i]; my $wruns = 0;
   if ($g) { my ($w, $p, $runs) = (0, 0, 0); for my $k (keys %$g) { next unless $k =~ /稍|重|不/; my ($a, $b, $c, $o) = map { $_ // 0 } @{$g->{$k}}; $w += $a; $p += $a + $b + $c; $runs += $a + $b + $c + $o }
@@ -263,6 +274,12 @@ for my $i (0 .. $n - 1) {
     if ($pd && $place eq '京都' && $surf eq '芝' && !$straight) {
       if ($dist == 1400 && $pd >= 1600) { $adj += 2; push @why, "前走${pd}mから短縮" }
       if ($dist == 2200 && $pd >= 2400) { $adj += 2; push @why, "前走${pd}mから短縮" }
+    }
+    # 距離短縮で初めての短距離(1400m以下): この距離の経験がなく、近走が全部今回より200m以上長い馬。相手のレベルが下がり、馬も楽に感じる。
+    # 短距離の実績がないので人気になりにくい(上昇の動画、未検証)。東京・京都の芝1400の短縮(上)とは重ねない
+    if ($dist <= 1400 && $surf ne '障' && $rdist[$i] && !$dn && !grep { /から短縮/ } @why) {
+      my @d = grep { $_ } map { $_->{dist} } @$z;
+      if (@d >= 2 && !grep { $_ < $dist + 200 } @d) { $adj += 2; push @why, "距離短縮で初めての${dist}m" }
     }
     # 阪神(直線に急坂)で前に行って止まった馬が、平坦な京都の直線なら粘れる
     if ($place eq '京都' && ($p->{place} // '') eq '阪神' && ($p->{first} // 99) <= 3 && $r >= 4 && $r <= 9 && ($p->{surf} // '') eq $surf) { $adj += 2; push @why, '前走阪神の坂で失速・今回平坦' }
