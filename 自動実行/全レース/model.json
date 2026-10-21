@@ -9,12 +9,12 @@
       "starRaces" : 0,
       "starTop3" : null
    },
-   "updatedAt" : "2026-10-20T21:52:00+09:00",
+   "updatedAt" : "2026-10-21T09:51:00+09:00",
    "weights" : {
-      "choshi" : 0.195,
-      "course" : 0.215,
-      "jisseki" : 0.298,
+      "choshi" : 0.194,
+      "course" : 0.223,
+      "jisseki" : 0.293,
       "kishu" : 0.157,
-      "kyori" : 0.135
+      "kyori" : 0.133
    }
 }
