@@ -198,6 +198,8 @@ for my $i (0 .. $n - 1) {
   push @notes, "前走 $z->[0]{race} $z->[0]{rank}着" if @$z && $z->[0]{rank};
   push @notes, $mnote if $mnote;
   push @notes, "初出走" unless @$z;
+  # トラック替わり(前走と今回で芝・ダートが違う)。能力値は変えず、大穴の軸候補の材料として出す(コタの動画、未検証)
+  push @notes, ($surf eq '芝' ? 'ダートから芝替わり' : '芝からダート替わり') if @$z && $surf =~ /^(芝|ダ)$/ && ($z->[0]{surf} // '') =~ /^(芝|ダ)$/ && $z->[0]{surf} ne $surf;
   push @notes, "休み明け($iv)" if (defined $wk && $wk >= 20) || $iv =~ /ヶ月|半年|年/;
   push @notes, "騎手のこのコース連対率 $jr%" if defined $jn && $jn >= 5;
   push @notes, @jw;

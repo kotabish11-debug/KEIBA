@@ -1924,26 +1924,28 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     return r.join(" / ");
   }
 
+  // 人気馬の不安材料(k は人気順の0始まり)。g1Hint と longshotHint で共通。不安材料が2つ以上か、強い材料が1つでもあれば「危ない」
+  function popDoubts(i, k, s) {
+    const h = horses[i], r = [], note = h.note || "";
+    if (k === 0) r.push(...favRisks(i));
+    else if (/反動/.test(note)) r.push("前走の激走の反動");
+    const ax = axisChecks(h).reduce((a, x) => a + x.pt, 0);
+    if (ax <= -5) r.push(`軸の減点${ax}`);
+    if (s.modelWin && s.mkWin && s.modelWin[i] < s.mkWin[i] * 0.8) r.push("能力値からの勝率が市場より低い");
+    const age = Number((String(horseProfile(h.name).sexage || "").match(/(\d+)$/) || [])[1]) || 0;
+    if (age >= 7) r.push(`${age}歳(ピークを過ぎ、世代交代の時期)`);
+    if (/勝負付け/.test(note)) r.push("上位の馬と勝負付けが済んでいる");
+    const strong = ax <= -8 || (s.modelWin && s.mkWin && s.modelWin[i] < s.mkWin[i] * 0.7) || /反動|勝負付け/.test(note);
+    return { r, bad: strong || r.length >= 2 };
+  }
+
   // G1の荒れ方(出典: 馬情報/G1の高配当パターン.md のコタの動画)。1〜3番人気のどれが危ないかで高配当の型を見分ける(能力値・買い目は変えない)
   function g1Hint(s) {
     if (!isG1()) return "";
     const idx = [...Array(horses.length).keys()].filter(i => oddsOf(horses[i]) < 999).sort((a, b) => oddsOf(horses[a]) - oddsOf(horses[b])).slice(0, 3);
     if (idx.length < 3) return "";
     const nm = i => esc(horses[i].name);
-    const rows = idx.map((i, k) => {
-      const h = horses[i], r = [], note = h.note || "";
-      let strong = false;
-      if (k === 0) r.push(...favRisks(i));
-      else if (/反動/.test(note)) r.push("前走の激走の反動");
-      const ax = axisChecks(h).reduce((a, x) => a + x.pt, 0);
-      if (ax <= -5) r.push(`軸の減点${ax}`);
-      if (s.modelWin && s.mkWin && s.modelWin[i] < s.mkWin[i] * 0.8) r.push("能力値からの勝率が市場より低い");
-      const age = Number((String(horseProfile(h.name).sexage || "").match(/(\d+)$/) || [])[1]) || 0;
-      if (age >= 7) r.push(`${age}歳(ピークを過ぎ、世代交代の時期)`);
-      if (/勝負付け/.test(note)) r.push("上位の馬と勝負付けが済んでいる");
-      if (ax <= -8 || (s.modelWin && s.mkWin && s.modelWin[i] < s.mkWin[i] * 0.7) || /反動|勝負付け/.test(note)) strong = true;
-      return { i, r, bad: strong || r.length >= 2 };
-    });
+    const rows = idx.map((i, k) => ({ i, ...popDoubts(i, k, s) }));
     const [f, a, b] = rows;
     const why = x => `${nm(x.i)}(${x.r.map(esc).join("・")})`;
     if (f.bad && !a.bad && !b.bad)
@@ -1993,6 +1995,29 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     const box = [...keep, hole, runner].filter(i => i !== undefined).slice(0, 3);
     const bads = rows.filter(x => x.bad).map(why).join(" / ");
     return `${head}で荒れる条件に近い: ${bads}${keep.length ? `。${keep.map(nm).join("・")}は信用` : "。1〜3番人気がそろって危ない(狙いすぎない)"}。穴は6番人気以下から${box.length === 3 ? `(例: ${box.map(nm).join("・")}の3連単ボックス6点)` : ""}${front ? "。前残りのコースなので、前に行ける馬を優先" : ""}`;
+  }
+
+  // 一見堅いレースの逆張り(出典: 馬情報/馬券の買い方_大穴軸の3連複.md のコタの動画)。上位2頭で単勝の支持率が50%以上なのに、そのどちらかに不安材料があるレースは、
+  // 2頭が4着以下になったときの配当が極端に大きい。大穴を軸に2・3着を狙う3連複の形を示す。ハンデ戦や混戦は票が割れていて超高配当になりにくいので対象外(能力値・買い目は変えない)
+  function longshotHint(s, mk) {
+    const idx = [...Array(horses.length).keys()].filter(i => oddsOf(horses[i]) < 999).sort((a, b) => oddsOf(horses[a]) - oddsOf(horses[b]));
+    if (idx.length < 10 || isG1()) return "";
+    const share = mk.q[idx[0]] + mk.q[idx[1]];
+    if (share < 0.5) return "";
+    const nm = i => esc(horses[i].name);
+    const rows = idx.slice(0, 2).map((i, k) => ({ i, ...popDoubts(i, k, s) }));
+    const head = `上位2頭(${rows.map(x => nm(x.i)).join("・")})で単勝の${pct(share, 0)}を占める一見堅いレース`;
+    const bad = rows.filter(x => x.bad);
+    if (!bad.length) return `${head}。2頭に目立つ不安がなく、本命決着が多い形。逆張りはしない`;
+    // 大穴の軸候補: 8番人気以下かつ単勝20倍以上で、能力値からの3着以内率が8%以上・市場の1.3倍以上
+    const holes = idx.filter((i, r) => r >= 7 && oddsOf(horses[i]) >= 20 && s.top3[i] >= 0.08 && s.top3[i] >= mk.place[i] * 1.3)
+      .sort((x, y) => s.top3[y] / mk.place[y] - s.top3[x] / mk.place[x]).slice(0, 3);
+    const tag = i => { const m = (horses[i].note || "").match(/前走ハイレベル|ダートから芝替わり|芝からダート替わり|勝ち馬と[\d.]+秒差|距離短縮で初めての\d+m/g); return m ? `・${m.map(esc).join("・")}` : ""; };
+    const why = x => `${nm(x.i)}(${x.r.map(esc).join("・")})`;
+    const cand = holes.length
+      ? `。軸の候補(能力値の3着以内率が市場より高い大穴): ${holes.map(i => `${nm(i)} ${oddsOf(horses[i]).toFixed(1)}倍(3着以内${pct(s.top3[i], 0)}${tag(i)})`).join(" / ")}。前走のレベルが高かった馬・芝ダートの替わりで変わる馬を優先`
+      : "。ただ能力値で市場より高く評価できる大穴が見当たらない。根拠のない大穴を軸にはしない";
+    return `${head}だが、${bad.map(why).join(" / ")}。この2頭が4着以下なら超高配当になる。大穴を軸に2・3着を狙う3連複(軸1頭流し)の形${cand}。年に数回しか当たらない狙いなので少額で`;
   }
 
   // オッズの断層: 単勝を人気順に並べ、隣の馬とのオッズが2倍以上離れる所でレースの勢力図を4つの型に分ける
@@ -2131,6 +2156,8 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     if (g1) v += `<br><span class="muted small">G1の荒れ方: ${g1}</span>`;
     const sf = smallFieldHint(s);
     if (sf) v += `<br><span class="muted small">少頭数の荒れ方: ${sf}</span>`;
+    const ls = longshotHint(s, mk);
+    if (ls) v += `<br><span class="muted small">一見堅いレースの逆張り: ${ls}${kari ? "(仮オッズ)" : ""}</span>`;
     const g1j = g1JockeyHint();
     if (g1j) v += `<br><span class="muted small">G1の騎手: ${g1j}</span>`;
     const conv = convHint(ev, bets, s);
