@@ -957,13 +957,14 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       course: `${d.surface || "芝"} ${d.dir || ""} ${num(d.dist, "")}m${d.courseNote ? "(" + d.courseNote + ")" : ""}`.replace(/\s+/g, " "),
       cond: String(d.cond || ""), heads: d.horses.filter(h => !h.scratched).length,
       weather: String(d.weather || ""), goingDefault: 0, chaos: num(d.chaos, 8),
-      courseBias: cbias, drawBias: dbias, paceScale: PACE_BIG_PLACES.includes(String(d.place || "")) ? 1.25 : 1,
+      courseBias: cbias, drawBias: dbias, dayJp: d.dayBias && typeof d.dayBias === "object" ? num(d.dayBias.jp, 0) : 0, paceScale: PACE_BIG_PLACES.includes(String(d.place || "")) ? 1.25 : 1,
       horses: d.horses.map(h => ({
         name: String(h.name), jockey: String(h.jockey || "未定"),
         style: STYLES_RUN.includes(h.style) ? h.style : "差し",
         jisseki: num(h.jisseki, 60), kyori: num(h.kyori, 65), course: num(h.course, 65), choshi: num(h.choshi, 65), kishu: num(h.kishu, 65),
         heavy: num(h.heavy, 0), odds: num(h.odds, 50), oddsKari: true, umaban: null, note: String(h.note || ""),
-        mustLead: !!h.mustLead, fromShort: !!h.fromShort, weight: num(h.weight, null)
+        mustLead: !!h.mustLead, fromShort: !!h.fromShort, weight: num(h.weight, null),
+        sireType: String(h.sireType || ""), damsireType: String(h.damsireType || "")
       }))
     };
   }
@@ -1252,6 +1253,41 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     } catch (e) { return 0; }
   }
 
+  // 種牡馬の国別タイプ(日本型・米国型・欧州型)。馬情報/種牡馬_国別タイプ.tsv の確度「?」以外と同じ(表を足したらここも)。出典は 馬情報/血統の系統と国別タイプ.md
+  const SIRE_TYPE = {};
+  [["日本", "キズナ キタサンブラック シルバーステート ゴールドシップ リアルスティール コントレイル サトノダイヤモンド ミッキーアイル オルフェーヴル アドマイヤマーズ ワールドプレミア イスラボニータ アルアイン スワーヴリチャード グレーターロンドン ハーツクライ フィエールマン ダノンプレミアム ダノンバラード ロジャーバローズ ディープインパクト サンデーサイレンス ステイゴールド ダイワメジャー マンハッタンカフェ アグネスタキオン フジキセキ ゼンノロブロイ ネオユニヴァース スペシャルウィーク ブラックタイド ヴィクトワールピサ ジャスタウェイ ドリームジャーニー ディープブリランテ エイシンヒカリ シュヴァルグラン キンシャサノキセキ マツリダゴッホ ビッグアーサー サクラバクシンオー エポカドーロ キャプテントゥーレ ワールドエース"],
+   ["米国", "ヘニーヒューズ アジアエクスプレス モーニン パイロ シニスターミニスター マジェスティックウォリアー ドレフォン マインドユアビスケッツ カリフォルニアクローム ニューイヤーズデイ ナダル ダノンレジェンド ディスクリートキャット シャンハイボビー エンパイアメーカー カジノドライヴ ストリートセンス アメリカンペイトリオット ミスターメロディ クロフネ Street_Cry Storm_Cat War_Front A.P._Indy Unbridled's_Song Tapit Smart_Strike Distorted_Humor Deputy_Minister フォーティナイナー エンドスウィープ サウスヴィグラス ヨハネスブルグ Elusive_Quality Discreet_Cat Tizway Congrats Aldebaran Southern_Image Posse"],
+   ["欧州", "ハービンジャー Galileo Sadler's_Wells Frankel Montjeu Sea_The_Stars Dubawi Dansili Danehill ノヴェリスト Monsun タニノフランケル シンボリクリスエス エピファネイア エフフォーリア スクリーンヒーロー モーリス グラスワンダー ルーラーシップ レイデオロ キングカメハメハ Kingmambo トニービン Lyphard Anabaa Giant's_Causeway ポエティックフレア ベンバトル ジャングルポケット Duke_of_Marmalade Invincible_Spirit Cape_Cross Shamardal Footstepsinthesand Dawn_Approach Sri_Pekan Reckless_Abandon American_Post Alamosa"]
+  ].forEach(([t, s]) => s.split(" ").forEach(n => { SIRE_TYPE[n.replace(/_/g, " ")] = t; }));
+  // 父・母父のタイプ。自動計算のレースはデータに入っている。手で付けたレースは馬カードの血統から引く
+  function bloodTypes(h) {
+    if (h.sireType || h.damsireType) return { sire: h.sireType || "", dam: h.damsireType || "" };
+    try {
+      const p = horseProfile(h.name), key = x => String(x || "").replace(/[’‘]/g, "'").trim();
+      return { sire: SIRE_TYPE[key(p.sire)] || "", dam: SIRE_TYPE[key(p.damsire)] || "" };
+    } catch (e) { return { sire: "", dam: "" }; }
+  }
+  // 手で付けたレースで重馬場適性が未設定(0)の馬: 古馬混合の芝2200m以上で、父か母父が欧州型なら道悪で +1
+  // (道悪の経験が2戦以下で、父の道悪適性の補正がないとき。自動計算のレースは計算時に反映済み)
+  function euroWetAdj(h) {
+    if (race.auto || Number(h.heavy) || sireWetAdj(h)) return 0;
+    const dist = Number(((race.course || "").match(/(\d{4})m/) || [])[1]);
+    if ((race.course || "").charAt(0) !== "芝" || !(dist >= 2200) || !/以上/.test(race.cond || "")) return 0;
+    const b = bloodTypes(h);
+    if (b.sire !== "欧州" && b.dam !== "欧州") return 0;
+    try {
+      const wet = (horseProfile(h.name).runs || []).filter(r => (!r.surface || r.surface === "芝") && /稍|重|不/.test(r.going || "")).length;
+      return wet <= 2 ? 1 : 0;
+    } catch (e) { return 0; }
+  }
+  // 当日の芝で日本型(サンデー系)の父の馬が走っているか(dayBias.jp: +は主流の馬場、-は反主流の馬場)。父のタイプが分かる馬だけ補正する
+  function dayBloodAdj(h) {
+    const jp = Number(race.dayJp) || 0;
+    if (!jp) return 0;
+    const t = bloodTypes(h).sire;
+    return t === "日本" ? jp * 1.2 : (t === "米国" || t === "欧州") ? -jp * 1.2 : 0;
+  }
+
   function baseFixed(going) {
     const total = roster.length;
     return horses.map((h, i) => {
@@ -1260,7 +1296,8 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       // ダートの道悪は砂が締まって舞いにくく、砂かぶりによる外枠有利が半分になる
       const db = /^ダ/.test(race.course || "") && going >= 2 && race.drawBias < 0 ? race.drawBias * 0.5 : race.drawBias;
       if (u >= 1 && u <= total) s += db * (1 - 2 * (u - 1) / Math.max(1, total - 1));
-      s += clampNum(Number(h.heavy) + (going ? sireWetAdj(h) : 0), -3, 3) * going * 0.9;
+      s += clampNum(Number(h.heavy) + (going ? sireWetAdj(h) + euroWetAdj(h) : 0), -3, 3) * going * 0.9;
+      s += dayBloodAdj(h);
       // ダートは雨で締まると速くなり、前が止まりにくい
       if (/^ダ/.test(race.course || "") && going >= 2 && (h.style === "逃げ" || h.style === "先行")) s += 0.5;
       return s;

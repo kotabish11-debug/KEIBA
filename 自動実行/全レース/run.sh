@@ -22,7 +22,7 @@ declare -A PLACE=( [04]=新潟 [05]=東京 [08]=京都 [06]=中山 [09]=阪神 [
 [ -f "$LOGH" ] || echo "raceId,date,place,surface,dist,grade,name,style,umaban,heads,jisseki,kyori,course,choshi,kishu,odds,predRank,rank,pop" > "$LOGH"
 # 当日のトラックバイアス用(終わったレースの全着順。bias.pl が読む)
 BIASF="$ROOT/馬情報/当日バイアス.tsv"
-[ -f "$BIASF" ] || printf 'date\tplace\tsurface\traceId\tumaban\theads\tlast4\trank\tpop\n' > "$BIASF"
+[ -f "$BIASF" ] || printf 'date\tplace\tsurface\traceId\tumaban\theads\tlast4\trank\tpop\tsireType\n' > "$BIASF"
 
 # dbにあるレースを (日付 場所 R) → ファイル で引けるようにする
 declare -A DBF
@@ -101,8 +101,9 @@ for off in -1 0 1 2; do
         perl -Mutf8 -MJSON::PP -0777 -e 'binmode STDOUT, ":utf8"; my ($pf, $rf, $id, $out) = @ARGV;
           my $p = JSON::PP->new->utf8->decode(do { local $/; open my $h, "<:raw", $pf; <$h> }); $p = $p->{data} if ref $p->{data} eq "HASH";
           my $r = JSON::PP->new->utf8->decode(do { local $/; open my $h, "<:raw", $rf; <$h> });
+          my %st = map { $_->{name} => ($_->{sireType} // "") } @{$p->{horses} || []};
           open my $A, ">>:utf8", $out; for my $x (@{$r->{order} || []}) { next unless ($x->{rank} // "") =~ /^\d+$/;
-            print $A join("\t", $p->{date}, $p->{place}, $p->{surface} // "", $id, $x->{umaban} // "", $r->{heads} // "", $x->{last4} // "", $x->{rank}, $x->{pop} // ""), "\n" }' \
+            print $A join("\t", $p->{date}, $p->{place}, $p->{surface} // "", $id, $x->{umaban} // "", $r->{heads} // "", $x->{last4} // "", $x->{rank}, $x->{pop} // "", $st{$x->{name}} // ""), "\n" }' \
           "$PRED" "$OUT/tmp/res_$ID.json" "$ID" "$BIASF"
         # 振り返りを日ごとのファイルにも残す
         perl -Mutf8 -MJSON::PP -0777 -e 'binmode STDOUT, ":utf8"; my ($pf, $rf) = @ARGV;

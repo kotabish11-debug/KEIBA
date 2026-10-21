@@ -109,8 +109,13 @@ my %SIRE_WET = (
             'キタサンブラック' => -1, 'レイデオロ' => -1, 'スワーヴリチャード' => -1, 'コントレイル' => -1 },
   'ダ' => { 'ナダル' => 1, 'パイロ' => 1, 'サンダースノー' => -1 });
 # 国別タイプが米国型(本馬や産駒がアメリカのダートで実績)とはっきり言える種牡馬。仕上がりが早くダッシュ力があり、若駒のダート短距離に強い(亀谷敬正の動画、未検証)
-my %SIRE_US = map { $_ => 1 } qw(ヘニーヒューズ アジアエクスプレス モーニン パイロ シニスターミニスター マジェスティックウォリアー ドレフォン マインドユアビスケッツ
-  カリフォルニアクローム ニューイヤーズデイ ナダル ダノンレジェンド ディスクリートキャット シャンハイボビー エンパイアメーカー カジノドライヴ ストリートセンス アメリカンペイトリオット ミスターメロディ);
+# 種牡馬の国別タイプ(日本・米国・欧州)は 馬情報/種牡馬_国別タイプ.tsv から読む。確度が「?」の種牡馬は使わない
+my %STYPE; { (my $dir = __FILE__) =~ s{[\\/][^\\/]*$}{}; $dir = '.' if $dir eq __FILE__; utf8::decode($dir);
+  my $tf = "$dir/../../馬情報/種牡馬_国別タイプ.tsv"; utf8::encode($tf);
+  local $/ = "\n"; if (open my $th, '<:encoding(UTF-8)', $tf) { <$th>; while (my $l = <$th>) { chomp $l; $l =~ s/\r$//; my ($s, $t, $sub, $cf) = split /\t/, $l; $STYPE{$s} = $t if $s && $t && $t ne '?' && ($cf // '') ne '?' } } }
+my %SIRE_US = map { $_ => 1 } grep { $STYPE{$_} eq '米国' } keys %STYPE;
+# 母父(馬名の後に並ぶ「(母父)」)
+my %damsire; { my $cur; while ($nm =~ /data-hsnm="([^"]+)"|class="tategaki hahachichi[^"]*">\s*(.*?)\s*<\/p>/sg) { if (defined $1) { $cur = $1 } elsif ($cur && !exists $damsire{$cur}) { (my $d = txt($2)) =~ s/[()（）]//g; $d =~ s/’/'/g; $damsire{$cur} = $d } } }
 # 脚質マーク(逃・先・差・追の順に▲が付く)
 my @legs; while ($nm =~ /<ul class="dbrunstyle2 legs">(.*?)<\/ul>/sg) { push @legs, [map { txt($_) } ($1 =~ /<li[^>]*>(.*?)<\/li>/sg)] }
 
@@ -173,6 +178,10 @@ for my $i (0 .. $n - 1) {
   # 2・3歳限定の新馬・未勝利・1勝クラスのダート1400m以下は、父が米国型なら +2(出典: 馬情報/血統の系統と国別タイプ.md)
   my $unote = '';
   if ($SIRE_US{$sire} && $surf eq 'ダ' && $dist <= 1400 && $cls =~ /^[23]歳(?:新馬|未勝利|1勝クラス)/) { $course = clamp($course + 2, 50, 92); $unote = "父${sire}は米国型(若駒のダート短距離 +2)" }
+  # 古馬混合の芝2200m以上は、父か母父が欧州型なら道悪で +1(道悪の経験2戦以下、父の道悪適性で補正した馬は除く)
+  my $dsire = $damsire{$name} // ''; my $enote = '';
+  if (!$sadj && $wruns <= 2 && $surf eq '芝' && $dist >= 2200 && $cls =~ /以上|上/ && grep { ($STYPE{$_} // '') eq '欧州' } $sire, $dsire) {
+    $heavy = clamp($heavy + 1, -2, 2); $enote = (($STYPE{$sire} // '') eq '欧州' ? "父${sire}" : "母父${dsire}") . 'が欧州型(古馬の芝長距離の道悪 +1)' }
   my $od =($odds[$i] // '') =~ /^([\d.]+)/ ? $1 + 0 : undef;
   my @notes = ("Ω指数 " . (($omega[$i] // '') =~ /^\d+$/ ? $omega[$i] : 'なし'));
   push @notes, "前走 $z->[0]{race} $z->[0]{rank}着" if @$z && $z->[0]{rank};
@@ -183,10 +192,14 @@ for my $i (0 .. $n - 1) {
   push @notes, @jw;
   push @notes, $snote if $snote;
   push @notes, $unote if $unote;
+  push @notes, $enote if $enote;
   my %hh = (name => $name, jockey => ($jockey[$i] // '未定'), style => $style,
     jisseki => $jisseki, kyori => $kyori, course => $course, choshi => clamp($choshi, 40, 95), kishu => $kishu, heavy => $heavy,
     note => join('・', @notes) . '(自動計算)');
   my $u = ($umaban[$i] // '') =~ /^(\d+)$/ ? $1 + 0 : undef; $hh{umaban} = $u;
+  # 血統の国別タイプ(当日バイアスの「日本型が走る馬場か」の判定に使う)
+  $hh{sire} = $sire if $sire; $hh{damsire} = $dsire if $dsire;
+  $hh{sireType} = $STYPE{$sire} if $STYPE{$sire}; $hh{damsireType} = $STYPE{$dsire} if $STYPE{$dsire};
   $hh{waku} = $1 + 0 if ($waku[$i] // '') =~ /^(\d+)$/;
   if (defined $od) { $hh{odds} = $od; $hh{oddsKari} = JSON::PP::false } else { $hh{oddsKari} = JSON::PP::true }
   if (($bw[$i] // '') =~ /^(\d{3})\s*\(\s*([＋－+\-]?)\s*(\d+)\s*\)/) { $hh{weight} = $1 + 0; my $s = ($2 eq '－' || $2 eq '-') ? -1 : 1; $hh{weightDiff} = $s * $3 }
