@@ -292,6 +292,18 @@ for my $i (0 .. $n - 1) {
       elsif ($r >= 4 && $r <= 9 && $steep{$pp} && $flat{$place} && !grep { /阪神の坂/ } @why) { $adj += 1; push @why, "前走は急坂の${pp}で凡走・今回は平坦" }
       if ($r <= 3 && $small{$pp} && $big{$place}) { $adj -= 1; push @why, "前走は小回りの${pp}で好走・今回は大箱" }
     }
+    # ラップの型(芝1600m以上): 直線の長いコースは瞬発力勝負(S)、直線の短いコースは持続力勝負(J)になりやすい。
+    # 近走で一方の型だけ好走し、もう一方の型で6着以下があれば、今回その苦手な型のコースで -2(上昇のラップの動画、未検証)
+    my $lapt = sub { my ($pl, $s, $d) = @_; return '' if ($s // '') ne '芝' || !$d || $d < 1600;
+      return 'S' if $pl eq '東京' || ($pl eq '新潟' && ($d == 1600 || $d == 1800)) || ($pl eq '阪神' && $d =~ /^(1600|1800|2400|2600)$/);
+      return 'J' if $pl =~ /^(函館|福島|小倉|札幌|中山)$/ || ($pl eq '阪神' && $d =~ /^(2000|2200|3000)$/); return '' };
+    my $ct = $straight ? '' : $lapt->($place, $surf, $dist);
+    if ($ct) {
+      my $ot = $ct eq 'S' ? 'J' : 'S'; my ($gO, $gT, $bT) = (0, 0, 0);
+      for my $q (@$z) { my $t = $lapt->($q->{place} // '', $q->{surf}, $q->{dist}) or next; my $qr = $q->{rank} or next;
+        if ($t eq $ot && $qr <= 3) { $gO++ } elsif ($t eq $ct && $qr <= 3) { $gT++ } elsif ($t eq $ct && $qr >= 6) { $bT++ } }
+      if ($gO && $bT && !$gT) { $adj -= 2; push @why, $ct eq 'S' ? '好走は持続力勝負のコースだけ・瞬発力勝負で凡走' : '好走は瞬発力勝負のコースだけ・持続力勝負で凡走' }
+    }
     # 同じ場でスタートが後ろにずれて1角まで長くなる距離(ダ1800→1900など)は、短い方で届かなかった差し馬が届く
     if ($pd && ($p->{place} // '') eq $place && ($p->{surf} // '') eq $surf && $p->{last} && $p->{heads} && $p->{last} / $p->{heads} > 0.35 && $r >= 2 && $r <= 6) {
       my %longer = ('中山芝1800' => 2000, '中京芝2000' => 2200, '中京ダ1800' => 1900, '京都ダ1800' => 1900, '阪神ダ1800' => 2000, '阪神芝2000' => 2200);
@@ -315,6 +327,33 @@ for my $i (0 .. $n - 1) {
     if ($tough && $cls =~ /[3３]勝|オープン/) { $sa = 2; $sw = '内枠で砂をかぶっても好走歴・上のクラスで差しが届きやすい' }
     elsif (!$tough && $weak && defined $u && $n >= 10 && $u <= $n * 0.3) { $sa = -2; $sw = '内枠で砂をかぶって凡走歴・今回も内枠' }
     if ($sa) { $hh{choshi} = clamp($hh{choshi} + $sa, 40, 95); $hh{note} =~ s/(\(自動計算\))$/・${sw}(${\($sa > 0 ? '+' : '')}$sa)$1/ }
+  }
+  # 軸馬の減点チェック(上昇のチェックリスト、点数は動画のまま・未検証)。能力値には足さず、シミュレーターが1〜3番人気の比較に表示する
+  if (@$z && $surf ne '障') {
+    my $p = $z->[0]; my @ax; my $add = sub { push @ax, [$_[0], $_[1]] };
+    my ($sex) = ($sexage[$i] // '') =~ /^(牡|牝|セ|騸)/; $sex //= '';
+    $add->('前走逃げて好走', -5) if ($p->{first} // 0) == 1 && ($p->{rank} // 99) <= 3;
+    $add->($surf eq '芝' ? '近走に芝の経験なし' : '近走にダートの経験なし', -5) unless grep { ($_->{surf} // '') eq $surf } @$z;
+    $add->("距離延長(前走$p->{dist}m)", -5) if $p->{dist} && $dist - $p->{dist} >= 200;
+    $add->('ダートで前走牝馬限定・今回牡馬混合', -5) if $surf eq 'ダ' && $sex eq '牝' && ($p->{race} // '') =~ /牝/ && $cls !~ /牝/;
+    # 昇級初戦: 条件戦(1〜3勝クラス)に前走1着の馬がいれば、勝ってクラスが上がった馬(オープン・重賞は前走のクラスが分からないので見ない)
+    $add->('昇級初戦(前走1着)', -4) if ($p->{rank} // 0) == 1 && $cls =~ /[123１２３]勝/;
+    $add->('前走は道悪で好走・今回は良', -4) if ($hh{note} // '') =~ /前走は道悪で好走/;
+    $add->("前走ローカル(${\($p->{place} // '')})で好走・今回主要場", -4) if ($p->{place} // '') =~ /^(福島|新潟|小倉|函館|札幌)$/ && $place =~ /^(東京|中山|阪神|京都)$/ && ($p->{rank} // 99) <= 3;
+    $add->('6か月以上の休み明け', -3) if (defined $wk && $wk >= 26) || $iv =~ /半年|年|([6-9]|1\d)ヶ月/;
+    if (defined $hh{umaban}) {
+      $add->('芝の外枠(16頭以上の13番より外)', -3) if $surf eq '芝' && $n >= 16 && $hh{umaban} >= 13;
+      $add->('ダートの内枠', -3) if $surf eq 'ダ' && $n >= 10 && $hh{umaban} <= 3;
+    }
+    if ($weight_rule eq 'ハンデ') { my @kk = map { /([\d.]+)/ ? $1 : 0 } @kin; my ($mx) = sort { $b <=> $a } @kk; my ($k) = ($kin[$i] // '') =~ /([\d.]+)/;
+      $add->("ハンデ戦のトップハンデ(${k}kg)", -3) if $k && $mx && $k >= $mx }
+    my %steep = map { $_ => 1 } qw(中山 阪神 中京);
+    $add->('急坂のコースで好走歴なし(近走)', -2) if $steep{$place} && !grep { $steep{$_->{place} // ''} && ($_->{rank} // 99) <= 3 && ($_->{surf} // '') eq $surf } @$z;
+    $add->("馬体重$hh{weightDiff}kg", -2) if defined $hh{weightDiff} && abs($hh{weightDiff}) >= 15;
+    $add->("${dir}回りの経験なし(近走)", -1) if $dir =~ /^(左|右)$/ && !grep { ($dirs{$_->{place} // ''} // '') eq $dir } @$z;
+    $add->('冬の牝馬', -1) if $sex eq '牝' && ($mo == 12 || $mo <= 2);
+    $add->('夏の牡馬', -1) if $sex eq '牡' && $mo >= 6 && $mo <= 8;
+    $hh{axisCheck} = [map { { why => $_->[0], pt => $_->[1] } } @ax] if @ax;
   }
   push @horses, \%hh;
 }

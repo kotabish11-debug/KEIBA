@@ -834,6 +834,8 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   };
   // 逃げないと走らない馬(mustLead)は、競り合うハイペースで崩れやすく、楽に行けるスローで粘りやすい
   const MUST_LEAD_ADJ = { high: -1.5, mid: 0, slow: 1 };
+  // 馬場の内外の偏りの揺れの大きさ(標準偏差。最内と大外の差はこの2倍)。芝は進路の内外で差が出やすく、ダートは砂かぶりの方が効くので小さめ
+  const DRAW_SHOCK = { turf: 2, dirt: 1.2 };
   // 小回りのローカル場は能力差が小さく、展開の影響が大きい
   const PACE_BIG_PLACES = ["福島", "小倉", "函館", "札幌"];
   const PACE_LABEL = { high: "ハイ", mid: "ミドル", slow: "スロー" };
@@ -980,7 +982,8 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
         jisseki: num(h.jisseki, 60), kyori: num(h.kyori, 65), course: num(h.course, 65), choshi: num(h.choshi, 65), kishu: num(h.kishu, 65),
         heavy: num(h.heavy, 0), odds: num(h.odds, 50), oddsKari: true, umaban: null, note: String(h.note || ""),
         mustLead: !!h.mustLead, fromShort: !!h.fromShort, weight: num(h.weight, null),
-        sireType: String(h.sireType || ""), damsireType: String(h.damsireType || "")
+        sireType: String(h.sireType || ""), damsireType: String(h.damsireType || ""),
+        axisCheck: Array.isArray(h.axisCheck) ? h.axisCheck.slice(0, 20).map(c => ({ why: String(c && c.why || ""), pt: num(c && c.pt, 0) })) : null
       }))
     };
   }
@@ -1329,14 +1332,20 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     const ps = Number(race.paceScale) || 1;
     const paceAdd = {};
     for (const k of ["high", "mid", "slow"]) paceAdd[k] = horses.map(h => (PACE_ADJ[k][h.style] || 0) * ps + (h.mustLead ? MUST_LEAD_ADJ[k] : 0));
+    // その回の馬場の内外の偏り(全馬共通の揺れ)。内が伸びる回は内枠の馬がそろって、外が伸びる回は外枠の馬がそろって来る(枠の近い馬はセットで来る。出典: 馬情報/軸馬と相手の選び方.md)
+    const total = roster.length;
+    const pos = horses.map(h => { const u = Number(h.umaban); return u >= 1 && u <= total ? 1 - 2 * (u - 1) / Math.max(1, total - 1) : 0; });
+    const drawShock = /^芝/.test(race.course || "") ? DRAW_SHOCK.turf : DRAW_SHOCK.dirt;
     for (let r = 0; r < N; r++) {
       const x = rnd();
       const pace = x < pp.high ? "high" : (x < pp.high + pp.mid ? "mid" : "slow");
       const adj = paceAdd[pace];
+      let u0 = rnd(); if (u0 < 1e-12) u0 = 1e-12;
+      const bias = Math.sqrt(-2 * Math.log(u0)) * Math.cos(6.283185307179586 * rnd()) * drawShock;
       for (let i = 0; i < n; i++) {
         let u = rnd(); if (u < 1e-12) u = 1e-12;
         const g = Math.sqrt(-2 * Math.log(u)) * Math.cos(6.283185307179586 * rnd());
-        perf[i] = fixed[i] + adj[i] + g * sigma;
+        perf[i] = fixed[i] + adj[i] + bias * pos[i] + g * sigma;
       }
       let a = -1, b = -1, c = -1;
       for (let i = 0; i < n; i++) {
@@ -1941,6 +1950,32 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     return riskTxt ? `はっきりした型なし${riskTxt}` : "";
   }
 
+  // 軸馬の減点チェック(上昇のチェックリスト。出典: 馬情報/軸馬と相手の選び方.md)。1〜3番人気を並べ、減点の最も少ない馬を軸候補として示す(能力値には足さない)
+  function axisChecks(h) {
+    if (Array.isArray(h.axisCheck)) return h.axisCheck;
+    // 全レースの自動計算(race_json.pl)の結果がない手入力のレースは、分かる項目だけ見る
+    const r = [], note = h.note || "", total = roster.length, u = Number(h.umaban);
+    const turf = /^芝/.test(race.course || ""), dirt = /^ダ/.test(race.course || "");
+    if (/前走逃げて好走/.test(note)) r.push({ why: "前走逃げて好走", pt: -5 });
+    if (/前走は道悪で好走/.test(note)) r.push({ why: "前走は道悪で好走・今回は良", pt: -4 });
+    if (/休み明け\((?:[6-9]|1\d)ヶ月|半年|1年/.test(note)) r.push({ why: "6か月以上の休み明け", pt: -3 });
+    if (u && turf && total >= 16 && u >= 13) r.push({ why: "芝の外枠(16頭以上の13番より外)", pt: -3 });
+    if (u && dirt && total >= 10 && u <= 3) r.push({ why: "ダートの内枠", pt: -3 });
+    if (h.weightDiff != null && Math.abs(h.weightDiff) >= 15) r.push({ why: `馬体重${h.weightDiff > 0 ? "+" : ""}${h.weightDiff}kg`, pt: -2 });
+    return r;
+  }
+  function axisHint() {
+    const idx = [...Array(horses.length).keys()].filter(i => oddsOf(horses[i]) < 999).sort((a, b) => oddsOf(horses[a]) - oddsOf(horses[b])).slice(0, 3);
+    if (idx.length < 3) return "";
+    const rows = idx.map(i => { const c = axisChecks(horses[i]); return { i, c, sum: c.reduce((a, x) => a + x.pt, 0) }; });
+    const best = Math.max(...rows.map(x => x.sum));
+    const txt = rows.map(x => `${esc(horses[x.i].name)} ${x.sum ? "−" + -x.sum : "0"}${x.c.length ? "(" + x.c.map(c => esc(c.why)).join("・") + ")" : ""}`).join(" / ");
+    const tops = rows.filter(x => x.sum === best);
+    const top = tops.length === rows.length ? "→ 減点では差がつかない" : `→ 減点が最も少ないのは${tops.map(x => esc(horses[x.i].name)).join("・")}`;
+    const danger = rows.filter(x => x.sum <= -8).map(x => esc(horses[x.i].name));
+    return `${txt} ${top}${danger.length ? `。${danger.join("・")}は減点が多く、危険な人気馬の可能性` : ""}`;
+  }
+
   // 収束の速さ(単勝・複勝=早い、馬連・ワイド=中期、3連系=長期)と上振れ幅。出典: 馬情報/馬券の買い方_収束と上振れ.md
   function convHint(ev, bets, s) {
     if (!ev) return "";
@@ -1982,6 +2017,8 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     if (gapHint) v += `<br><span class="muted small">オッズの断層: ${gapHint}${kari ? "(仮オッズ)" : ""}</span>`;
     const trio = trioHint(s);
     if (trio) v += `<br><span class="muted small">3連複の向き: ${trio}</span>`;
+    const ax = axisHint();
+    if (ax) v += `<br><span class="muted small">軸の減点(1〜3番人気): ${ax}</span>`;
     const conv = convHint(ev, bets, s);
     if (conv) v += `<br><span class="muted small">収束と上振れ: ${conv}</span>`;
     $("verdict").innerHTML = v;
