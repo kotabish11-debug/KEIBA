@@ -505,6 +505,20 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
 .ni-foot { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: 12.5px; color: var(--muted); }
 .ni-foot .btn { padding: 1px 10px; font-size: 12px; }
 .news-empty { padding: 18px; text-align: center; color: var(--muted); }
+/* レース予想・馬カードの中の関係ニュース */
+.race-news { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; border-radius: 6px; background: var(--inset); border: 1px solid var(--line); font-size: 13.5px; }
+.race-news.hot { border-color: var(--mark); }
+.race-news h3, .rn-h { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; font-size: 14px; color: var(--gold); letter-spacing: .06em; }
+.race-news h3 .btn { margin-left: auto; padding: 1px 10px; font-size: 12px; letter-spacing: 0; }
+.rn-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.rn-list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; padding-left: 8px; border-left: 3px solid var(--line); }
+.rn-list li.imp2 { border-left-color: var(--gold-deep); }
+.rn-list li.imp3 { border-left-color: var(--mark); }
+.rn-list .ni-cat { font-size: 11.5px; }
+.rn-list time { font-family: var(--f-num); font-size: 12px; color: var(--muted); }
+.rn-list a { color: var(--ink); font-weight: 700; text-decoration: none; }
+.rn-list a:hover { color: var(--gold); text-decoration: underline; }
+.rn-list .s { flex-basis: 100%; font-size: 12.5px; color: var(--muted); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
@@ -550,6 +564,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       <div class="sale" id="saleInfo" hidden></div>
       <div class="star-note" id="starNote" hidden></div>
       <div class="review" id="reviewBox" hidden></div>
+      <div class="race-news" id="raceNews" hidden></div>
       <div class="notice" id="oddsNotice" hidden></div>
       <div class="auto-log" id="autoLog" hidden></div>
     </div>
@@ -590,6 +605,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
         <span>的中率: シミュレーションでその馬券が当たった割合</span>
         <span>期待値: 的中率 × オッズ。1.0を超えると、長く買い続けた場合に理論上プラス</span>
         <span>推定オッズ: 単勝オッズから計算した目安。購入前に実際のオッズを確認</span>
+        <span>収束: 単勝・複勝は早く、馬連・ワイドは中期、3連系は長期で成績が落ち着く。長期の買い方ほど外れの連続に耐える資金が要る</span>
       </div>
       <details class="kinds">
         <summary>券種の説明</summary>
@@ -1457,6 +1473,12 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       const f = b.odds > 1 ? Math.max(0.002, (b.p * b.odds - 1) / (b.odds - 1)) : 0.002;
       return Object.assign({}, b, { w: f });
     });
+    // ワイドに添える馬連のおさえは、ワイドの4分の1まで(ワイド8:馬連2が目安。出典: 馬情報/馬券の買い方_ワイド.md)
+    list.forEach(b => {
+      if (!b.cover) return;
+      const w = list.find(x => x.type === "ワイド" && x.h[0] === b.h[0] && x.h[1] === b.h[1]);
+      if (w) b.w = Math.min(b.w, w.w * 0.25);
+    });
     list.sort((a, b) => b.w - a.w);
     // 予算が少ないときは点数を絞って1点に集める(1000円までは2点、2000円までは3点)。薄く広げると当たっても増えない
     const cap = units <= 10 ? 2 : units <= 20 ? 3 : units;
@@ -1489,7 +1511,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   function evaluate(bets, s) {
     const cost = bets.reduce((x, b) => x + b.amount, 0);
     if (!cost) return null;
-    let hit = 0, ret = 0, profit = 0, max = 0;
+    let hit = 0, ret = 0, sq = 0, profit = 0, max = 0;
     for (let r = 0; r < s.N; r++) {
       const a = s.order[r * 3], b = s.order[r * 3 + 1], c = s.order[r * 3 + 2];
       let pay = 0;
@@ -1498,8 +1520,13 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       if (pay > cost) profit++;
       if (pay > max) max = pay;
       ret += pay;
+      sq += (pay / cost) * (pay / cost);
     }
-    return { cost, hit: hit / s.N, rate: ret / s.N / cost, profit: profit / s.N, max, hitAvg: hit ? ret / hit : 0 };
+    const rate = ret / s.N / cost;
+    // 収束の目安: 同じ期待値・ばらつきの買い方を何レース続ければ、平均の収支がばらつき(1標準偏差)を上回るか(期待どおりなら約8割でプラス)
+    const sd = Math.sqrt(Math.max(0, sq / s.N - rate * rate));
+    const conv = rate > 1 ? Math.ceil((sd / (rate - 1)) ** 2) : null;
+    return { cost, hit: hit / s.N, rate, profit: profit / s.N, max, hitAvg: hit ? ret / hit : 0, conv };
   }
   // 予想どおり(勝率の高い順に1着・2着・3着)に決まったときの払戻の合計
   function predPay(bets, top) {
@@ -1573,6 +1600,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     renderMeta();
     renderSale();
     renderReview();
+    renderRaceNews();
   }
   function renderMeta() {
     const d = autoData || {};
@@ -1855,10 +1883,44 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     if (dirt && total >= 10 && u >= 1 && u <= total * 0.3 && h.style !== "逃げ" && h.style !== "先行") r.push("ダートの内枠で砂をかぶりやすい");
     if (turf && dist && dist <= 1400) r.push("芝1400m以下(短いほど1番人気が負けやすい)");
     if (/^(幸|三浦|今村|横山典|丹内|西村淳)/.test(h.jockey || "")) r.push(`${h.jockey}騎手(1番人気の勝率が平均より低い騎手。出典は 馬情報/騎手の得意・苦手.md)`);
+    if (race.grade && /^戸崎/.test(h.jockey || "")) r.push("戸崎騎手の重賞(1番人気の勝率18.5%。2〜5番人気の方が勝ち切る)");
+    if (/ルメール/.test(h.jockey || "") && Number(settings.going) >= 1) r.push("ルメール騎手で道悪(稍重〜不良は成績が落ちる)");
+    if (/秒差の完勝/.test(h.note || "")) r.push("前走の圧勝(昇級初戦が多く、条件がはまっただけのこともあって人気しすぎやすい)");
     return r;
   }
 
   // オッズの断層: 単勝を人気順に並べ、隣の馬とのオッズが2倍以上離れる所でレースの勢力図を4つの型に分ける
+  // 3連複が向くレースか(出典: 馬情報/馬券の買い方_3連複.md の青木の動画)。3着以内の候補が数頭に絞れて、それ以外の馬との差がはっきりしているときだけ、狭いフォーメーションで買う
+  function trioHint(s) {
+    const idx = [...Array(s.n).keys()].sort((a, b) => s.top3[b] - s.top3[a]);
+    if (idx.length < 7) return "";
+    const q = idx.map(i => s.top3[i]);
+    const nm = i => esc(horses[i].name);
+    // 上位2頭が2着以内で抜けているなら、3連複にせず2頭の馬連(1点)で足りる。勝率の差がはっきりしていれば馬単も(出典: 馬情報/馬券の買い方_単勝・馬連・馬単.md)
+    const t2 = [...Array(s.n).keys()].sort((a, b) => s.top2[b] - s.top2[a]);
+    if (s.top2[t2[1]] >= 0.55 && s.top2[t2[2]] <= s.top2[t2[1]] * 0.6) {
+      const [a, b] = s.win[t2[0]] >= s.win[t2[1]] ? [t2[0], t2[1]] : [t2[1], t2[0]];
+      const upper = !!race.grade || /[23３]勝|オープン|OP|リステッド|\(L\)/.test(race.cond || "");
+      const wide = race.place === "東京" || /外回り/.test(race.course || "");
+      const small = ["中山", "福島", "小倉", "函館", "札幌"].includes(race.place) || /内回り/.test(race.course || "");
+      let t = `上位2頭(${nm(a)}・${nm(b)})が抜けている。3連複にせず馬連で足りる`;
+      if (upper && wide) t += "。2勝クラス以上・コーナーの緩い広いコースで、馬連1点で勝負しやすい条件";
+      else if (small) t += "。ただ小回りのコースは位置取りで着順が入れ替わりやすいので、1点勝負は控えめに";
+      else if (!upper) t += "。ただ下のクラスは成長や力の読み違いが起きやすいので、1点勝負は控えめに";
+      if (s.win[a] >= s.win[b] * 1.6) t += `。1着は${nm(a)}が上と見られるので、${nm(a)}→${nm(b)}の馬単も向く`;
+      return t;
+    }
+    // 3〜6頭目のあとで3着以内率が大きく落ちる所を境目にする
+    let cut = 0;
+    for (let k = 2; k <= 5; k++) if (q[k] >= 0.3 && q[k + 1] <= q[k] * 0.65) { cut = k + 1; break; }
+    if (!cut) return "3着以内の候補とそれ以外の境目がはっきりしない。3連複は点数が広がるので向かない";
+    const cand = idx.slice(0, cut);
+    const axis = cand[0], second = cand.slice(1, 3), third = cand.slice(1, 5);
+    const pts = second.length * (third.length - 1) - (second.length === 2 ? 1 : 0);
+    const solid = s.win[axis] >= 0.45 ? `(軸の${nm(axis)}は勝ち切る力が抜けているので、1着の馬券の方が向く)` : "";
+    return `3着以内の候補は${cut}頭で、ほかとの差がはっきりしている。軸1頭・狭いフォーメーション向き(例: 1列目 ${nm(axis)} / 2列目 ${second.map(nm).join("・")} / 3列目 ${third.map(nm).join("・")} の${pts}点)${solid}。実際の買い目は期待値で選んでいる`;
+  }
+
   function oddsGapHint(s) {
     const idx = [...Array(s.n).keys()].filter(i => oddsOf(horses[i]) < 999).sort((a, b) => oddsOf(horses[a]) - oddsOf(horses[b]));
     if (idx.length < 6) return "";
@@ -1877,6 +1939,25 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     if (gap === 1 || gap === 2) return `上位${gap + 1}頭が抜けている(${idx.slice(0, gap + 1).map(i => esc(horses[i].name)).join("・")})。この中で比べて1頭を選ぶレース${riskTxt}`;
     if (gap === undefined && o[4] < 10) return `上位のオッズが割れて断層がない混戦。絞れる材料がなければ見送り向き${riskTxt}`;
     return riskTxt ? `はっきりした型なし${riskTxt}` : "";
+  }
+
+  // 収束の速さ(単勝・複勝=早い、馬連・ワイド=中期、3連系=長期)と上振れ幅。出典: 馬情報/馬券の買い方_収束と上振れ.md
+  function convHint(ev, bets, s) {
+    if (!ev) return "";
+    const out = [];
+    if (ev.conv) {
+      const n = ev.conv;
+      const term = n <= 30 ? "早い" : n <= 150 ? "中期" : "長期";
+      out.push(`この買い方は収束が${term}(同じ期待値の買い方を約${n > 999 ? "1000以上" : n}レース続けると、期待どおりなら8割ほどの確率で収支がプラス)`);
+    }
+    const up = ev.max / ev.cost;
+    const fav = Math.min(...horses.map(h => Number(h.odds) || 99));
+    if (up < 3.5) {
+      out.push(`当たっても最大${up.toFixed(1)}倍で上振れ幅が小さい${fav < 2 ? "。1倍台の軸から人気どころしか買えないなら、見送りや金額を下げるのも選択肢" : ""}`);
+    } else if (fav < 2) {
+      out.push(`1倍台の1番人気は単勝ではなく軸にして、馬連は相手を絞り、3連複は相手を広げて上振れを狙う形(最大${up.toFixed(0)}倍)`);
+    }
+    return out.join("。");
   }
 
   function renderBets(s, m) {
@@ -1899,6 +1980,10 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     }
     const gapHint = oddsGapHint(s);
     if (gapHint) v += `<br><span class="muted small">オッズの断層: ${gapHint}${kari ? "(仮オッズ)" : ""}</span>`;
+    const trio = trioHint(s);
+    if (trio) v += `<br><span class="muted small">3連複の向き: ${trio}</span>`;
+    const conv = convHint(ev, bets, s);
+    if (conv) v += `<br><span class="muted small">収束と上振れ: ${conv}</span>`;
     $("verdict").innerHTML = v;
 
     const statItems = ev ? [
@@ -2310,6 +2395,37 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       ${raceBtns || horses ? `<div class="ni-foot">${horses ? `<span>馬: ${horses}</span>` : ""}${raceBtns}</div>` : ""}
     </article>`;
   }
+  // レースや馬に関係するニュース(raceIds にそのレースがある、または出てくる馬が出走馬)。予想に直結するもの → 新しいもの の順
+  function relatedNews(pred, max) {
+    return news.items.filter(pred)
+      .sort((a, b) => (Number(b.importance) >= 3) - (Number(a.importance) >= 3) || String(b.at || "").localeCompare(String(a.at || "")))
+      .slice(0, max);
+  }
+  function newsLiHtml(n) {
+    const imp = Number(n.importance) || 1;
+    const t = new Date(n.at);
+    const when = isNaN(t) ? "" : `${t.getMonth() + 1}/${t.getDate()}` + (n.dateOnly ? "" : ` ${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`);
+    const url = /^https:\/\//.test(n.url || "") ? n.url : "";
+    const title = url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(n.title || "")}</a>` : `<b>${esc(n.title || "")}</b>`;
+    return `<li class="imp${imp}"><span class="ni-cat">${esc(n.category || "その他")}</span>${imp >= 3 ? `<span class="ni-imp">予想に影響</span>` : ""}<time>${when}</time>${title}${n.summary ? `<span class="s">${esc(n.summary)}</span>` : ""}</li>`;
+  }
+  function renderRaceNews() {
+    const el = $("raceNews");
+    if (!el) return;
+    const names = new Set(roster.filter(h => !h.scratched).map(h => h.name));
+    // 終わったレースは、発走日までのニュースだけにする
+    const until = race.iso && race.iso < todayIso() ? race.iso + "T23:59" : "9999";
+    const list = relatedNews(n => String(n.at || "") <= until &&
+      ((Array.isArray(n.raceIds) && n.raceIds.includes(race.id)) || (Array.isArray(n.horses) && n.horses.some(x => names.has(x)))), 6);
+    if (!list.length) { el.hidden = true; return; }
+    el.classList.toggle("hot", list.some(n => Number(n.importance) >= 3));
+    el.innerHTML = `<h3>このレースに関係するニュース<button type="button" class="btn" data-goto-news>ニュースをすべて見る</button></h3><ul class="rn-list">${list.map(newsLiHtml).join("")}</ul>`;
+    el.hidden = false;
+  }
+  function horseNewsPanel(name) {
+    const list = relatedNews(n => Array.isArray(n.horses) && n.horses.includes(name), 5);
+    return list.length ? `<div class="panel"><h3>ニュース <span class="sub">この馬が出てくる最近の記事</span></h3><ul class="rn-list">${list.map(newsLiHtml).join("")}</ul></div>` : "";
+  }
   function nextNewsLabel() {
     const n = new Date(Date.now() + JST);
     const h = n.getUTCHours() * 60 + n.getUTCMinutes();
@@ -2324,6 +2440,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       const b = e.target.closest("[data-open]"); if (!b) return;
       setView("race"); selectRace(b.dataset.open); window.scrollTo(0, 0);
     });
+    $("raceNews").addEventListener("click", e => { if (e.target.closest("[data-goto-news]")) { setView("news"); window.scrollTo(0, 0); } });
   }
   function watchNews(db) {
     try {
@@ -2333,6 +2450,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
         news.loaded = true;
         if (view === "news") newsMarkRead();
         renderNews();
+        renderRaceNews();
       }, () => { news.loaded = true; renderNews(); });
       db.collection("newsDigest").orderBy("at", "desc").limit(1).onSnapshot(snap => {
         const d = snap.docs.find(s => s.exists);
@@ -2479,6 +2597,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
           ${top.length ? `<div class="today">${top.join("")}</div>` : ""}
         </div>
         <div class="panels">${abil}${ped}${basic}${commentPanel}</div>
+        ${horseNewsPanel(name)}
         <div class="panel"><h3>戦績 <span class="sub">新しい順・「同条件」は今回と同じ競馬場で距離差200m以内</span></h3>${runs}</div>
         <p class="card-foot">取得元: 出走馬データ(スポーツナビ競馬)・2026年JRA重賞の全着順${p.source ? "・" + esc(p.source) : ""}</p>`
     };
@@ -2486,14 +2605,17 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
 
   // 騎手の得意・苦手(過去3年。YouTubeの騎手解説動画の要約で未検証)。詳しくは 馬情報/騎手の得意・苦手.md
   const JOCKEY_TIPS = {
-    "ルメール": { rate: "27.8%", good: "東京(芝2400mは複勝率74%)・芝マイル・芝長距離・新潟・逃げ先行", bad: "芝1200m前後・追込・高齢馬・阪神中京", pop: "1番人気は堅い。7番人気以下は0勝" },
-    "坂井瑠星": { rate: "15.5%", good: "芝1200m前後(勝率22%)・ダート中距離・逃げ先行・京都・大久保龍厩舎", bad: "芝長距離・中山", pop: "上位人気は信頼。9番人気以下は0勝" },
+    "ルメール": { rate: "27.8%", good: "東京(芝2400mは複勝率74%)・芝マイル・芝2000m以上(京都外回り)・新潟・逃げ先行・重賞の8枠(単勝回収率125%)", bad: "芝1200m前後・道悪(稍重〜不良)・ダート・追込・高齢馬・阪神中京", pop: "1番人気は堅い。7番人気以下は0勝。秋(10〜12月)の中長距離重賞で狙い、雨なら嫌う" },
+    "川田将雅": { rate: "—", good: "先行(4角5番手以内)・ダート・阪神京都の芝1600m・小回り芝2000mの重賞(コーナー4つの重賞は単勝回収率141%)", bad: "芝2500m以上(重賞では単勝を買わない)", pop: "—" },
+    "岩田望来": { rate: "—", good: "ダート(2026年のダートリーディング・勝率21%)・阪神京都(勝率16〜17%)・乗り替わりでも割り引かない", bad: "関東(東京の勝率7.8%)。2400m以上の重賞勝ちはまだない", pop: "—" },
+    "坂井瑠星": { rate: "15.5%", good: "芝1200m前後(勝率22%)・ダート中距離・逃げ先行・内枠・500kg以上の大型馬・京都・大久保龍厩舎", bad: "芝長距離・中山・差し馬(重賞の芝は勝率5.6%、ダートは15.8%)", pop: "上位人気は信頼。9番人気以下は0勝" },
     "武豊": { rate: "14.4%", good: "ダート中距離・芝1200m前後・京都・夏の北海道・武英智/友道厩舎", bad: "芝1400m", pop: "騎手人気で売れやすい。10番人気以下は0勝" },
-    "松山弘平": { rate: "13.8%", good: "ダート中距離(勝ち数1位)・芝1800m・逃げ先行・小倉・杉山晴/橋口/池添学厩舎", bad: "芝長距離・東京中山", pop: "10番人気以下は0勝" },
+    "松山弘平": { rate: "13.8%", good: "ダート中距離(勝ち数1位)・芝1800m・逃げ先行・小倉・G2(勝率15.9%)・杉山晴/橋口/池添学厩舎", bad: "芝長距離・東京中山・外枠の差し馬", pop: "10番人気以下は0勝。重賞は3番人気以下でもよく勝つ" },
     "北村友一": { rate: "10.8%", good: "芝1800〜2000m・京都中京・夏の北海道・斉藤崇/高野/藤原英厩舎", bad: "小倉・芝1200m・牝馬", pop: "1番人気の勝率41.8%で堅い。12番人気以下は0勝" },
-    "西村淳也": { rate: "10.4%", good: "芝マイル〜1800m・ダート中距離・逃げ先行・中京・中内田/杉山晴/高野厩舎", bad: "追込(勝ちの2%)・東京", pop: "1番人気の勝率29.4%でやや低い。8番人気以下の穴は多い" },
+    "西村淳也": { rate: "10.4%", good: "芝マイル〜1800m・ダート中距離・逃げ先行・中京・中内田/杉山晴/高野厩舎・ロードカナロア産駒・重賞は芝(15勝、ダート0勝)", bad: "追込(勝ちの2%)・東京・関東のダート(勝率4%前後)", pop: "1番人気の勝率29.4%でやや低い。8番人気以下の穴は多い" },
     "横山典弘": { rate: "10.1%", good: "芝1800m・差し追込・東京・昆/松永幹/安田翔/菊沢厩舎", bad: "芝1200m前後(勝率2%)", pop: "1番人気の勝率28%。重賞は2・3着が多くヒモ向き。11番人気以下は0勝" },
     "高杉吏麒": { rate: "9.3%", good: "芝・ダートの1400m以下・先行・中京・牡馬", bad: "芝マイル・芝1800m", pop: "人気でも穴でも良い(8番人気以下の勝ち数3位)" },
+    "戸崎圭太": { rate: "—", good: "外枠(特にダート。8枠の勝率23.1%)・東京ダ1400/1600mの3勝クラス以上・芝ダートとも勝率15%超", bad: "内枠で馬群に包まれる形", pop: "重賞は1番人気(勝率18.5%)より2〜5番人気で買う" },
     "津村明秀": { rate: "8.4%", good: "芝1800m・芝長距離・ダート短距離・中山福島・林徹/手塚厩舎", bad: "芝1400m・関西の競馬場", pop: "穴が多い(単勝回収率99%)。ヒモで押さえる" },
     "三浦皇成": { rate: "8.3%", good: "ダート全般・中山福島・差し・武井厩舎", bad: "芝長距離・重賞", pop: "1番人気の勝率25.5%。2着が多い" },
     "田辺裕信": { rate: "8.2%", good: "芝2200m以上・芝マイル・追込・福島(重賞5勝すべて)", bad: "芝1200m前後(1着では買わない)・芝1400m", pop: "人気別は平均どおり" },
