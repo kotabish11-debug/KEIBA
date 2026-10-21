@@ -96,9 +96,10 @@ for my $k (1 .. 5) {
     my ($pmargin) = $cell =~ /class="std11">\s*[^<\d(]+\(\s*(\d+(?:\.\d+)?)\s*\)\s*<\/td>/;
     my ($pass) = $cell =~ /class="zensou std11"><span[^>]*>\s*(.*?)\s*<\/span>/s;
     my ($rn) = $cell =~ /class="zensoname">\s*([^<]*?)\s*</s;
+    my ($ppace) = $cell =~ /<span class="bold (?:red|green|blue)">\s*([HMS])\s*</;   # 前走のペース(H・M・S)
     my %circ; my @cc = split //, '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱'; $circ{$cc[$_]} = $_ + 1 for 0 .. $#cc;
     my @pos = map { $circ{$_} } grep { exists $circ{$_} } split //, ($pass // '');
-    push @{$zen[$i]}, { rank => $rank, heads => $hd, last => $pos[-1], first => $pos[0], umaban => $pu, surf => $psurf, dist => $pdist, going => $pgoing, place => $pplace, margin => $pmargin, race => $rn // '' };
+    push @{$zen[$i]}, { rank => $rank, heads => $hd, last => $pos[-1], first => $pos[0], umaban => $pu, surf => $psurf, dist => $pdist, going => $pgoing, place => $pplace, margin => $pmargin, pace => $ppace, race => $rn // '' };
   }
 }
 # 父(馬名等の欄で、馬名の後に母・父が並ぶ)
@@ -297,7 +298,19 @@ for my $i (0 .. $n - 1) {
       if ($r <= 3 && $flat{$pp} && $steep{$place}) { $adj -= 2; push @why, "前走は平坦の${pp}で好走・今回は急坂" }
       elsif ($r >= 4 && $r <= 9 && $steep{$pp} && $flat{$place} && !grep { /阪神の坂/ } @why) { $adj += 1; push @why, "前走は急坂の${pp}で凡走・今回は平坦" }
       if ($r <= 3 && $small{$pp} && $big{$place}) { $adj -= 1; push @why, "前走は小回りの${pp}で好走・今回は大箱" }
+      # 東京と中山は求められる適性が逆(東京=切れ味・スピード、中山=器用さ・長く使う脚・スタミナ。ダートは中山が最も時計がかかる)。
+      # 東京で好走して中山で人気になる馬は飛びやすく、東京で凡走した馬が中山のダートで巻き返す(コタの動画。2026年4〜10月の平場で
+      # 東京好走→中山は40頭で勝率10%(オッズからの期待21%)、東京ダ6着以下→中山ダは89頭で勝率7.9%(期待5.4%)・単回収108%)
+      if ($pp eq '東京' && $place eq '中山') {
+        if ($r <= 3) { $adj -= 2; push @why, '前走は東京で好走・今回は中山(適性が逆)' }
+        elsif ($r >= 6 && $surf eq 'ダ') { $adj += 1; push @why, '前走は東京ダートで凡走・今回は中山ダート' }
+      }
     }
+    # 前崩れのレースで先行して粘った馬: 上級条件(2勝クラス以上)で前走がハイペース、1角・4角とも3番手以内で4〜10着。
+    # 展開が厳しかっただけで、次走で巻き返しやすい(コタの動画。2026年4〜10月の平場で173頭・勝率12.7%(期待7.8%)・単回収128%、
+    # 1角3番手以内・4〜10着で前走スローは182頭・勝率9.3%(期待7.8%)・単回収66%)
+    if (($p->{pace} // '') eq 'H' && $cls =~ /[23２３]勝|オープン/ && ($p->{surf} // '') eq $surf
+        && ($p->{first} // 99) <= 3 && ($p->{last} // 99) <= 3 && $r >= 4 && $r <= 10) { $adj += 2; push @why, '前走ハイペースを先行して粘った' }
     # ラップの型(芝1600m以上): 直線の長いコースは瞬発力勝負(S)、直線の短いコースは持続力勝負(J)になりやすい。
     # 近走で一方の型だけ好走し、もう一方の型で6着以下があれば、今回その苦手な型のコースで -2(上昇のラップの動画、未検証)
     my $lapt = sub { my ($pl, $s, $d) = @_; return '' if ($s // '') ne '芝' || !$d || $d < 1600;
