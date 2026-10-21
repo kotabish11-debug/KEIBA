@@ -2128,6 +2128,23 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     return out.join("。");
   }
 
+  // 合成オッズ: 同じ券種の買い目(どれか1つしか当たらない単勝・馬連・馬単)を、どれが当たっても同じ額が戻るように配分したときの倍率。
+  // 1番人気を含む組を足すと合成オッズが大きく下がる(出典: 馬情報/馬券の買い方_単勝・馬連・馬単.md のコタ)
+  function synthHint(bets) {
+    const fav = horses.reduce((a, h, i) => (oddsOf(h) < oddsOf(horses[a]) ? i : a), 0);
+    const so = list => 1 / list.reduce((a, b) => a + 1 / b.odds, 0);
+    const out = [];
+    for (const type of ["単勝", "馬連", "馬単"]) {
+      const list = bets.filter(b => b.type === type && b.odds > 1);
+      if (list.length < 2) continue;
+      let t = `${type}${list.length}点で${so(list).toFixed(2)}倍`;
+      const rest = list.filter(b => !b.h.includes(fav));
+      if (rest.length && rest.length < list.length) t += `(1番人気${esc(horses[fav].name)}を含む${list.length - rest.length}点を外すと${so(rest).toFixed(2)}倍)`;
+      out.push(t);
+    }
+    return out.join(" / ");
+  }
+
   function renderBets(s, m) {
     const mk = marketProbs();
     const cands = buildCandidates(s, mk);
@@ -2152,16 +2169,22 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     if (trio) v += `<br><span class="muted small">3連複の向き: ${trio}</span>`;
     const ax = axisHint(s);
     if (ax) v += `<br><span class="muted small">軸の減点(1〜3番人気): ${ax}</span>`;
+    const at = axisTypeHint(s, mk);
+    if (at) v += `<br><span class="muted small">軸の型: ${at}${kari ? "(仮オッズ)" : ""}</span>`;
     const g1 = g1Hint(s);
     if (g1) v += `<br><span class="muted small">G1の荒れ方: ${g1}</span>`;
     const sf = smallFieldHint(s);
     if (sf) v += `<br><span class="muted small">少頭数の荒れ方: ${sf}</span>`;
     const ls = longshotHint(s, mk);
     if (ls) v += `<br><span class="muted small">一見堅いレースの逆張り: ${ls}${kari ? "(仮オッズ)" : ""}</span>`;
+    const fh = favHoleHint(s);
+    if (fh) v += `<br><span class="muted small">1番人気軸の穴流し: ${fh}${kari ? "(仮オッズ)" : ""}</span>`;
     const g1j = g1JockeyHint();
     if (g1j) v += `<br><span class="muted small">G1の騎手: ${g1j}</span>`;
     const conv = convHint(ev, bets, s);
     if (conv) v += `<br><span class="muted small">収束と上振れ: ${conv}</span>`;
+    const syn = synthHint(bets);
+    if (syn) v += `<br><span class="muted small">合成オッズ(どれが当たっても同じ額が戻る配分): ${syn}</span>`;
     $("verdict").innerHTML = v;
 
     const statItems = ev ? [
