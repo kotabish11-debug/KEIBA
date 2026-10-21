@@ -1962,6 +1962,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     if (u && turf && total >= 16 && u >= 13) r.push({ why: "芝の外枠(16頭以上の13番より外)", pt: -3 });
     if (u && dirt && total >= 10 && u <= 3) r.push({ why: "ダートの内枠", pt: -3 });
     if (h.weightDiff != null && Math.abs(h.weightDiff) >= 15) r.push({ why: `馬体重${h.weightDiff > 0 ? "+" : ""}${h.weightDiff}kg`, pt: -2 });
+    if (h.style === "追込") r.push({ why: "追込(展開待ち)", pt: -3 });   // テスラ: 追込は展開任せで軸に向かない
     return r;
   }
   function axisHint(s) {
