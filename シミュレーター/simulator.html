@@ -2109,6 +2109,31 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     return `${txt} ${top}${danger.length ? `。${danger.join("・")}は減点が多く、危険な人気馬の可能性` : ""}${byType}`;
   }
 
+  // ワイドの形(出典: 馬情報/馬券の買い方_ワイド.md のコタの動画)。危ない1番人気がいるレースは、2〜4番人気の実力上位1頭→穴3頭のワイド3点。
+  // 1番人気が来ても残り2席で当たる。軸が決められず荒れそうなら5頭ボックス(10点)。能力値・買い目は変えない
+  function wideHint(s, mk) {
+    const idx = [...Array(horses.length).keys()].filter(i => oddsOf(horses[i]) < 999).sort((a, b) => oddsOf(horses[a]) - oddsOf(horses[b]));
+    if (idx.length < 8) return "";
+    const fav = popDoubts(idx[0], 0, s);
+    if (!fav.bad) return "";
+    const n = s.n, N = s.N, o = s.order, nm = i => esc(horses[i].name);
+    const both = (a, b) => { let c = 0; for (let r = 0; r < N; r++) { const t = [o[r * 3], o[r * 3 + 1], o[r * 3 + 2]]; if (t.includes(a) && t.includes(b)) c++; } return c / N; };
+    const wOdds = (a, b) => estOdds("ワイド", mk.wide[Math.min(a, b) * n + Math.max(a, b)]);
+    const head = `1番人気${nm(idx[0])}が危ない(${fav.r.map(esc).join("・")})。ワイドなら来ても2・3着の組で残るので思い切って外せる`;
+    const axes = idx.slice(1, 4).map((i, k) => ({ i, k: k + 1, ...popDoubts(i, k + 1, s) })).filter(x => !x.bad).sort((a, b) => s.top3[b.i] - s.top3[a.i]);
+    if (!axes.length) {
+      const box = idx.slice(1).sort((a, b) => s.top3[b] - s.top3[a]).slice(0, 5);
+      return `${head}。2〜4番人気にも不安があり軸が決まらない。荒れそうなら5頭ボックス(10点): ${box.map(nm).join("・")}`;
+    }
+    const ax = axes[0].i;
+    // 穴: 5番人気以下で、能力値の3着以内率が12%以上かつ市場の1.2倍以上
+    const holes = idx.slice(4).filter(i => s.top3[i] >= 0.12 && s.top3[i] >= mk.place[i] * 1.2).sort((a, b) => s.top3[b] - s.top3[a]).slice(0, 3);
+    const axTxt = `軸=${nm(ax)}(${axes[0].k + 1}番人気・3着以内${pct(s.top3[ax], 0)})`;
+    if (!holes.length) return `${head}。${axTxt}だが、能力値で市場より高く評価できる5番人気以下の穴がいないので、この形は使わない`;
+    const pairs = holes.map(h => `${nm(h)}(約${wOdds(ax, h).toFixed(1)}倍・的中${pct(both(ax, h), 0)})`).join(" / ");
+    return `${head}。${axTxt}→穴${holes.length}頭のワイド${holes.length}点: ${pairs}。穴が2頭来ればダブル的中`;
+  }
+
   // 収束の速さ(単勝・複勝=早い、馬連・ワイド=中期、3連系=長期)と上振れ幅。出典: 馬情報/馬券の買い方_収束と上振れ.md
   function convHint(ev, bets, s) {
     if (!ev) return "";
@@ -2174,6 +2199,8 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     if (ax) v += `<br><span class="muted small">軸の減点(1〜3番人気): ${ax}</span>`;
     const at = axisTypeHint(s, mk);
     if (at) v += `<br><span class="muted small">軸の型: ${at}${kari ? "(仮オッズ)" : ""}</span>`;
+    const wh = wideHint(s, mk);
+    if (wh) v += `<br><span class="muted small">ワイドの形: ${wh}${kari ? "(仮オッズ)" : ""}</span>`;
     const g1 = g1Hint(s);
     if (g1) v += `<br><span class="muted small">G1の荒れ方: ${g1}</span>`;
     const sf = smallFieldHint(s);
