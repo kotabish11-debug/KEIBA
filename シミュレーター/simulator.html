@@ -2128,18 +2128,21 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     return out.join("。");
   }
 
-  // 合成オッズ: 同じ券種の買い目(どれか1つしか当たらない単勝・馬連・馬単)を、どれが当たっても同じ額が戻るように配分したときの倍率。
+  // 合成オッズ: 同じ券種の買い目(どれか1つしか当たらない単勝・馬連・馬単・3連複・3連単)を、どれが当たっても同じ額が戻るように配分したときの倍率。
   // 1番人気を含む組を足すと合成オッズが大きく下がる(出典: 馬情報/馬券の買い方_単勝・馬連・馬単.md のコタ)
+  // 3連単は200倍未満の組を外したときの倍率も出す(コタは200倍未満をほぼ消す。出典: 馬情報/馬券の買い方_3連単とNGな買い方.md)。買い目そのものは期待値で選ぶので変えない
   function synthHint(bets) {
     const fav = horses.reduce((a, h, i) => (oddsOf(h) < oddsOf(horses[a]) ? i : a), 0);
     const so = list => 1 / list.reduce((a, b) => a + 1 / b.odds, 0);
     const out = [];
-    for (const type of ["単勝", "馬連", "馬単"]) {
+    for (const type of ["単勝", "馬連", "馬単", "3連複", "3連単"]) {
       const list = bets.filter(b => b.type === type && b.odds > 1);
       if (list.length < 2) continue;
       let t = `${type}${list.length}点で${so(list).toFixed(2)}倍`;
       const rest = list.filter(b => !b.h.includes(fav));
       if (rest.length && rest.length < list.length) t += `(1番人気${esc(horses[fav].name)}を含む${list.length - rest.length}点を外すと${so(rest).toFixed(2)}倍)`;
+      const hi = list.filter(b => b.odds >= 200);
+      if (type === "3連単" && hi.length && hi.length < list.length) t += `(200倍未満の${list.length - hi.length}点を外すと${so(hi).toFixed(2)}倍)`;
       out.push(t);
     }
     return out.join(" / ");
