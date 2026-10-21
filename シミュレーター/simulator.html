@@ -984,7 +984,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
         style: STYLES_RUN.includes(h.style) ? h.style : "差し",
         jisseki: num(h.jisseki, 60), kyori: num(h.kyori, 65), course: num(h.course, 65), choshi: num(h.choshi, 65), kishu: num(h.kishu, 65),
         heavy: num(h.heavy, 0), odds: num(h.odds, 50), oddsKari: true, umaban: null, note: String(h.note || ""),
-        mustLead: !!h.mustLead, fromShort: !!h.fromShort, weight: num(h.weight, null),
+        mustLead: !!h.mustLead, fromShort: !!h.fromShort, prevFront: typeof h.prevFront === "boolean" ? h.prevFront : null, weight: num(h.weight, null),
         sireType: String(h.sireType || ""), damsireType: String(h.damsireType || ""),
         axisCheck: Array.isArray(h.axisCheck) ? h.axisCheck.slice(0, 20).map(c => ({ why: String(c && c.why || ""), pt: num(c && c.pt, 0) })) : null
       }))
@@ -1941,6 +1941,24 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     return { r, bad: strong || r.length >= 2 };
   }
 
+  // 展開と隊列(出典: 馬情報/展開予想の手順.md のコタの動画)。前走1角3番手以内の割合と、それで有利・不利が分かれる距離延長の馬、逃げ候補を示す(能力値・買い目は変えない)
+  // 動画の「逃げ馬のすぐ外」「先行馬がばらける」「まくれる馬はスロー向き」は、直近2か月の平場328レースで当てはまらなかったので出さない
+  function tenkaiHint() {
+    const n = horses.length, nm = h => esc(h.name), out = [];
+    const known = horses.filter(h => h.prevFront === true || h.prevFront === false);
+    const fc = known.filter(h => h.prevFront).length;
+    const fr = known.length >= n * 0.7 && n >= 8 ? fc / known.length : null;
+    if (fr !== null) {
+      const ext = horses.filter(h => /距離延長・前に行く馬/.test(h.note || ""));
+      out.push(`前走1角3番手以内が${fc}/${known.length}頭(${pct(fr, 0)})` +
+        (!ext.length ? "" : fr < 0.3 ? `。前に行く馬が少なく、距離延長の${ext.map(nm).join("・")}は楽に前へ行けて好走しやすい`
+          : fr >= 0.4 ? `。前に行く馬が多く、距離延長の${ext.map(nm).join("・")}は追走に脚を使って苦戦しやすい` : ""));
+    }
+    const leaders = horses.filter(h => h.mustLead || h.style === "逃げ").sort((a, b) => (Number(a.umaban) || 99) - (Number(b.umaban) || 99));
+    if (leaders.length) out.push(`逃げ候補は${leaders.map(nm).join("・")}${leaders.length >= 2 ? "(複数いて競り合うとペースが上がる)" : ""}`);
+    return out.join("。");
+  }
+
   // G1の荒れ方(出典: 馬情報/G1の高配当パターン.md のコタの動画)。1〜3番人気のどれが危ないかで高配当の型を見分ける(能力値・買い目は変えない)
   function g1Hint(s) {
     if (!isG1()) return "";
@@ -2212,6 +2230,8 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     if (at) v += `<br><span class="muted small">軸の型: ${at}${kari ? "(仮オッズ)" : ""}</span>`;
     const wh = wideHint(s, mk);
     if (wh) v += `<br><span class="muted small">ワイドの形: ${wh}${kari ? "(仮オッズ)" : ""}</span>`;
+    const tk = tenkaiHint();
+    if (tk) v += `<br><span class="muted small">展開と隊列: ${tk}</span>`;
     const g1 = g1Hint(s);
     if (g1) v += `<br><span class="muted small">G1の荒れ方: ${g1}</span>`;
     const sf = smallFieldHint(s);

@@ -246,6 +246,9 @@ for my $i (0 .. $n - 1) {
     my @r3 = @{$z}[0 .. ($#$z < 2 ? $#$z : 2)];
     $hh{mustLead} = JSON::PP::true if (grep { ($_->{first} // 0) == 1 } @r3) >= 2;
     $hh{fromShort} = JSON::PP::true if $z->[0]{dist} && $dist - $z->[0]{dist} >= 200 && $style =~ /逃げ|先行/;
+    # 前走の最初のコーナーで3番手以内か(コタ: この頭数の割合で延長馬の有利・不利が分かれる。下の「距離延長」とシミュレーターの「展開と隊列」で使う)。通過順が無ければ出さない
+    $hh{prevFront} = $z->[0]{first} <= 3 ? JSON::PP::true : JSON::PP::false if $z->[0]{first};
+    $hh{_extend} = 1 if $z->[0]{dist} && $dist - $z->[0]{dist} >= 200;
   }
   # 危険な人気馬の条件(前走の好走が条件に恵まれたもの)と、その逆の巻き返し
   if (@$z && $z->[0]{rank}) {
@@ -384,6 +387,12 @@ for my $x (@horses) {
   next unless delete $x->{_prevLead};
   if ($leaders >= 2) { $x->{choshi} = clamp($x->{choshi} - 2, 40, 95); $x->{note} =~ s/(\(自動計算\))$/・逃げ馬がほかにもいる(-2)$1/ }
 }
+# 距離延長は、前走1角3番手以内の馬が30%未満(スロー見込み)なら +1、40%以上(先行争いが激しい)なら -2(コタの動画。2026年8月30日〜10月19日の平場328レースで、前走より200m以上延長の馬の3着以内率は人気からの期待より、30%未満のレース +2.0pt(695頭)・40%以上 -4.2pt(151頭))
+{ my @pf = grep { exists $_->{prevFront} } @horses; my $fr = @pf >= @horses * 0.7 && @horses >= 8 ? scalar(grep { $_->{prevFront} } @pf) / @pf : undef;
+  for my $x (@horses) {
+    next unless delete $x->{_extend}; next unless defined $fr; next if $x->{note} =~ /から延長/;
+    my $ad = $fr < 0.3 ? 1 : $fr >= 0.4 ? -2 : 0; next unless $ad;
+    $x->{choshi} = clamp($x->{choshi} + $ad, 40, 95); my $w = $ad > 0 ? "距離延長・前に行く馬が少なく落ち着きそう(+1)" : "距離延長・前に行く馬が多く流れが速そう(-2)"; $x->{note} =~ s/(\(自動計算\))$/・$w$1/ } }
 # 仮オッズ: オッズがまだ無い馬は、能力値から人気を想定して付ける(1/オッズの合計が約1.25)
 my %W = (jisseki => .35, kyori => .15, course => .15, choshi => .20, kishu => .15);
 my @score = map { my $x = $_; my $s = 0; $s += $W{$_} * $x->{$_} for keys %W; $s } @horses;

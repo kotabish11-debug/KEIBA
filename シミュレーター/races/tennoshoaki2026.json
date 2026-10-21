@@ -64,7 +64,7 @@
       "umaban" : null
     },
     {
-      "choshi" : 90,
+      "choshi" : 91,
       "course" : 85,
       "heavy" : 0,
       "jisseki" : 84,
@@ -72,9 +72,10 @@
       "kishu" : 72,
       "kyori" : 80,
       "name" : "セイウンハーデス",
-      "note" : "毎日王冠を5人気で勝利。東京で好走、前走勝ち。",
+      "note" : "毎日王冠を5人気で勝利。東京で好走、前走勝ち。 毎日王冠(1800m)から距離延長・前に行く馬が少なく落ち着きそう(+1。前走1角3番手以内は3/13頭)。",
       "odds" : 13.1,
       "oddsKari" : true,
+      "prevFront" : false,
       "style" : "先行",
       "umaban" : null
     },
@@ -90,11 +91,12 @@
       "note" : "金鯱賞1着、札幌記念1着。宝塚記念は14着。",
       "odds" : 16.4,
       "oddsKari" : true,
+      "prevFront" : false,
       "style" : "先行",
       "umaban" : null
     },
     {
-      "choshi" : 65,
+      "choshi" : 66,
       "course" : 85,
       "heavy" : 0,
       "jisseki" : 84,
@@ -102,9 +104,10 @@
       "kishu" : 78,
       "kyori" : 80,
       "name" : "リアライズシリウス",
-      "note" : "共同通信杯1着、皐月賞2着。毎日王冠は1人気7着。3歳は56kgで有利。",
+      "note" : "共同通信杯1着、皐月賞2着。毎日王冠は1人気7着。3歳は56kgで有利。 毎日王冠(1800m)から距離延長・前に行く馬が少なく落ち着きそう(+1。前走1角3番手以内は3/13頭)。",
       "odds" : 15.3,
       "oddsKari" : true,
+      "prevFront" : true,
       "style" : "差し",
       "umaban" : null
     },
@@ -120,6 +123,7 @@
       "note" : "宝塚記念7着、オールカマー4着(1人気)。牝馬は56kg。 岩田望来騎手と新コンビ(前走の戸崎はダノンデサイル、ルメールはマスカレードボールへ)。岩田望来騎手は東京が苦手(勝率7.8%、-2)。乗り替わり自体では下げない。",
       "odds" : 15.3,
       "oddsKari" : true,
+      "prevFront" : true,
       "style" : "追込",
       "umaban" : null
     },
@@ -135,6 +139,7 @@
       "note" : "チャレンジC1着、小倉記念2着。 松山騎手は外枠の差し馬が苦手。枠順確定で外枠なら-1。",
       "odds" : 16.4,
       "oddsKari" : true,
+      "prevFront" : false,
       "style" : "差し",
       "umaban" : null
     },
@@ -150,6 +155,7 @@
       "note" : "宝塚記念4着。オールカマー11着(2人気)。",
       "odds" : 32.8,
       "oddsKari" : true,
+      "prevFront" : false,
       "style" : "先行",
       "umaban" : null
     },
@@ -165,11 +171,12 @@
       "note" : "札幌記念2着、エプソムC5着。",
       "odds" : 32.8,
       "oddsKari" : true,
+      "prevFront" : false,
       "style" : "差し",
       "umaban" : null
     },
     {
-      "choshi" : 78,
+      "choshi" : 79,
       "course" : 80,
       "heavy" : 0,
       "jisseki" : 78,
@@ -177,14 +184,15 @@
       "kishu" : 77,
       "kyori" : 78,
       "name" : "ホウオウビスケッツ",
-      "note" : "毎日王冠2着(9人気)。",
+      "note" : "毎日王冠2着(9人気)。 毎日王冠(1800m)から距離延長・前に行く馬が少なく落ち着きそう(+1。前走1角3番手以内は3/13頭)。",
       "odds" : 32.8,
       "oddsKari" : true,
+      "prevFront" : true,
       "style" : "先行",
       "umaban" : null
     },
     {
-      "choshi" : 75,
+      "choshi" : 76,
       "course" : 72,
       "heavy" : 0,
       "jisseki" : 76,
@@ -192,9 +200,10 @@
       "kishu" : 80,
       "kyori" : 76,
       "name" : "レディネス",
-      "note" : "札幌記念3着、毎日王冠3着。",
+      "note" : "札幌記念3着、毎日王冠3着。 毎日王冠(1800m)から距離延長・前に行く馬が少なく落ち着きそう(+1。前走1角3番手以内は3/13頭)。",
       "odds" : 43.7,
       "oddsKari" : true,
+      "prevFront" : false,
       "style" : "差し",
       "umaban" : null
     },
@@ -210,11 +219,12 @@
       "note" : "小倉大賞典1着、宝塚記念5着。",
       "odds" : 54.6,
       "oddsKari" : true,
+      "prevFront" : false,
       "style" : "先行",
       "umaban" : null
     },
     {
-      "choshi" : 60,
+      "choshi" : 61,
       "course" : 65,
       "heavy" : 0,
       "jisseki" : 72,
@@ -222,9 +232,10 @@
       "kishu" : 72,
       "kyori" : 76,
       "name" : "エルトンバローズ",
-      "note" : "しらさぎS1着。毎日王冠9着。",
+      "note" : "しらさぎS1着。毎日王冠9着。 毎日王冠(1800m)から距離延長・前に行く馬が少なく落ち着きそう(+1。前走1角3番手以内は3/13頭)。",
       "odds" : 87.4,
       "oddsKari" : true,
+      "prevFront" : false,
       "style" : "先行",
       "umaban" : null
     },
@@ -244,7 +255,7 @@
       "umaban" : null
     },
     {
-      "choshi" : 52,
+      "choshi" : 53,
       "course" : 66,
       "heavy" : -1,
       "jisseki" : 65,
@@ -252,9 +263,10 @@
       "kishu" : 70,
       "kyori" : 66,
       "name" : "シャンパンカラー",
-      "note" : "毎日王冠13着、安田記念12着。",
+      "note" : "毎日王冠13着、安田記念12着。 毎日王冠(1800m)から距離延長・前に行く馬が少なく落ち着きそう(+1。前走1角3番手以内は3/13頭)。",
       "odds" : 109.3,
       "oddsKari" : true,
+      "prevFront" : false,
       "style" : "差し",
       "umaban" : null
     },
@@ -270,6 +282,7 @@
       "note" : "新潟記念9着。",
       "odds" : 131.1,
       "oddsKari" : true,
+      "prevFront" : false,
       "style" : "差し",
       "umaban" : null
     }
