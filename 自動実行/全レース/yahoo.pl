@@ -7,6 +7,7 @@
 #          前回のdbのデータに素データ(yahooRaw)があれば、その馬の近走はそれを使い、馬ページを取り直さない(馬番・オッズ・馬体重などは出馬表から取り直す)
 #   perl yahoo.pl need   <出馬表.html> [前回のdbのデータ.json]                … 馬ページを取る必要がある馬ID(前回の素データに無い馬)
 #   perl yahoo.pl result <結果ページ.html>                                 … result_json.pl と同じ形の着順。結果がまだ無ければ終了コード 2
+#   perl yahoo.pl fuku   <オッズページ(race/odds/tfw).html>                    … {"<馬番>":[単勝,複勝の下限,複勝の上限]}。オッズが無ければ終了コード 2
 # スポーツナビには Ω指数・騎手のコース連対率・調教師×騎手・前走の馬場とペースが無い。
 # Ω指数の代わりに、近走の着差(勝ち馬との差)と格(G1〜G3)から「近走の指数」を作る(検証はしていない目安)
 use utf8; use strict; use warnings;
@@ -136,6 +137,18 @@ sub past_runs {
   return @runs;
 }
 sub days { my ($y, $m, $d) = @_; ($m, $y) = ($m + 12, $y - 1) if $m < 3; return int(365.25 * $y) + int(30.6001 * ($m + 1)) + $d }
+
+# 単勝・複勝オッズのページ(行: 枠番|馬番|馬名|単勝|複勝の下限 - 上限)から、馬番ごとの [単勝, 複勝の下限, 複勝の上限] を取り出す
+if ($cmd eq 'fuku') {
+  my $h = slurp(shift); my %o;
+  while ($h =~ /<tr[^>]*>(.*?)<\/tr>/sg) {
+    my @c = map { txt($_) } ($1 =~ /<td[^>]*>(.*?)<\/td>/sg);
+    next unless @c >= 5 && $c[1] =~ /^\d+$/;
+    my ($lo, $hi) = $c[4] =~ /^([\d.]+)\s*-\s*([\d.]+)$/ or next;
+    $o{$c[1]} = [($c[3] =~ /^[\d.]+$/ ? $c[3] + 0 : undef), $lo + 0, $hi + 0];
+  }
+  exit 2 unless %o; print encode_json(\%o), "\n"; exit 0;
+}
 
 if ($cmd eq 'result') {
   my $h = slurp(shift); my @order;

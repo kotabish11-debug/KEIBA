@@ -96,16 +96,20 @@ for off in -1 $(seq 0 "${AHEAD:-6}"); do
         # その日の同じ場・同じ馬場で終わったレースから、当日のトラックバイアスを推定する(根拠が足りなければ空)
         SRC="$OUT/tmp/r_$ID.json"; [ $RC -ne 0 ] && SRC="$DBFILE"
         DAYB=""; [ -n "$SRC" ] && DAYB=$(perl "$HERE/bias.pl" "$BIASF" "$DISO" "${PLACE[$V]}" "$(field_of "$SRC" surface)")
+        # 当日と前日は、スポーツナビの単勝・複勝オッズ(1日の予算の複勝の買い方が使う)。fukuAt は取った時刻
+        FUKU=""; if [ "$off" -le 1 ]; then ykai "$DISO" "$V"; if [ -n "$YK" ]; then yget "race/odds/tfw/$YK$R" "$OUT/tmp/tfw_$ID.html"; FUKU=$(perl "$HERE/yahoo.pl" fuku "$OUT/tmp/tfw_$ID.html" 2>/dev/null); fi; fi
+        FUKUAT=$(TZ=JST-9 date +%Y-%m-%dT%H:%M:00+09:00)
         if [ $RC -eq 0 ] && { [ -z "$DBFILE" ] || [ "$(docid_of "$DBFILE")" = "k$ID" ]; }; then
           ST=$(perl "$HERE/star.pl" "$OUT/tmp/r_$ID.json" "$MODEL")
           perl -Mutf8 -MJSON::PP -0777 -e 'my $d = JSON::PP->new->utf8->decode(do { local $/; open my $h, "<:raw", $ARGV[0]; <$h> }); my $s = JSON::PP->new->utf8->decode($ARGV[1]);
             $d->{star} = $s->{star}; $d->{starProb} = $s->{starProb}; $d->{starHonmei} = $s->{honmei}; $d->{dayBias} = JSON::PP->new->utf8->decode($ARGV[2]) if $ARGV[2];
-            print JSON::PP->new->utf8->canonical->encode($d)' "$OUT/tmp/r_$ID.json" "$ST" "$DAYB" > "$OUT/races/k$ID.json"
+            if ($ARGV[3]) { $d->{fuku} = JSON::PP->new->utf8->decode($ARGV[3]); $d->{fukuAt} = $ARGV[4] }
+            print JSON::PP->new->utf8->canonical->encode($d)' "$OUT/tmp/r_$ID.json" "$ST" "$DAYB" "$FUKU" "$FUKUAT" > "$OUT/races/k$ID.json"
           printf 'race\tk%s\t%s\n' "$ID" "$OUT/races/k$ID.json" >> "$OUT/manifest.tsv"
         elif [ -n "$DBFILE" ]; then
           DOC=$(docid_of "$DBFILE"); ST=$(perl "$HERE/star.pl" "$DBFILE" "$MODEL")
           perl -Mutf8 -MJSON::PP -e 'my $s = JSON::PP->new->utf8->decode($ARGV[0]); my %u = (star => $s->{star}, starProb => $s->{starProb}, starHonmei => $s->{honmei});
-            $u{dayBias} = JSON::PP->new->utf8->decode($ARGV[1]) if $ARGV[1]; print JSON::PP->new->utf8->canonical->encode(\%u)' "$ST" "$DAYB" > "$OUT/updates/$DOC.json"
+            $u{dayBias} = JSON::PP->new->utf8->decode($ARGV[1]) if $ARGV[1]; if ($ARGV[2]) { $u{fuku} = JSON::PP->new->utf8->decode($ARGV[2]); $u{fukuAt} = $ARGV[3] } print JSON::PP->new->utf8->canonical->encode(\%u)' "$ST" "$DAYB" "$FUKU" "$FUKUAT" > "$OUT/updates/$DOC.json"
           printf 'update\t%s\t%s\n' "$DOC" "$OUT/updates/$DOC.json" >> "$OUT/manifest.tsv"
         fi
         continue

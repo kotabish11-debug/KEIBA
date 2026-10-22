@@ -1,0 +1,52 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>過去レースでシミュレーターを動かす</title>
+<!-- 使い方は run_bt.sh。sim_core.js(extract.pl で simulator.html から抜き出した計算部分)と data.js(make_data.pl)を読み、
+     レースごとに「シミュレーターの勝率・3着以内率・馬券の候補(確率と推定オッズ)」を <pre> に1行1レースのJSONで出す。#開始,終了 で範囲を指定 -->
+<script>
+  let race, roster, horses, settings, autoData = null;
+  function dateLong() { return ""; }
+  function horseProfile() { return {}; }
+  function bloodTypes() { return { sire: "", dam: "" }; }
+</script>
+<script src="sim_core.js"></script>
+<script src="data.js"></script>
+<pre id="out"></pre>
+<script>
+(function () {
+  const [from, to] = (location.hash.slice(1) || "0," + DATA.length).split(",").map(Number);
+  const lines = [];
+  // race_json.pl と同じ波乱度
+  const chaosOf = d => d.surface === "障" ? 12 : (/2歳|新馬/.test(d.cls || "") || /ハンデ/.test(d.cond || "")) ? 20 : 16;
+  for (let k = from; k < Math.min(to, DATA.length); k++) {
+    const d = DATA[k];
+    try {
+      const ok = d.horses.map(h => /^\d+$/.test(String(h.rank)) && Number(h.odds) >= 1);
+      if (ok.filter(Boolean).length < 5) continue;
+      race = raceFromDoc(Object.assign({}, d, { auto: true, chaos: chaosOf(d), going: undefined }), d.id);
+      roster = race.horses.map((h, i) => Object.assign(h, { umaban: d.horses[i].umaban, odds: Number(d.horses[i].odds) || 999, oddsKari: false, scratched: !ok[i] }));
+      horses = roster.filter(h => !h.scratched);
+      settings = defaultSettings();
+      const s = simulate();
+      const mk = marketProbs();
+      const cands = buildCandidates(s, mk);
+      const U = horses.map(h => Number(h.umaban));
+      const key = c => {
+        const u = c.h.map(i => U[i]);
+        return (c.type === "馬単" || c.type === "3連単" ? u : u.slice().sort((a, b) => a - b)).join("-");
+      };
+      const r4 = v => Math.round(v * 1e4) / 1e4;
+      // 本物のオッズと組み合わせて確かめるため、馬連・馬単・3連複・ワイドは期待値に関係なく確率0.3%以上を全部出す
+      const c = cands.filter(x => x.type === "単勝" || x.type === "複勝" || (x.type !== "3連単" && x.p >= 0.003) || (x.ev >= 0.9 && x.p >= 0.004)).map(x => [x.type, key(x), r4(x.p), x.odds]);
+      const picks = {};
+      for (const st of ["safe", "balance", "big"]) for (const ev of ["1.0", "1.1", "1.3"]) {
+        picks[st + ev] = pickBets(cands, st, ev).good.map(x => [x.type, key(x), r4(x.p), x.odds, x.cover ? 1 : 0]);
+      }
+      lines.push(JSON.stringify({ id: d.id, date: d.date, place: d.place, cls: d.cls, surface: d.surface, u: U,
+        rank: horses.map((h, i) => Number(d.horses[roster.indexOf(h)].rank)), odds: horses.map(h => h.odds),
+        win: (s.target || s.win).map(r4), top3: s.top3.map(r4), c, picks }));
+    } catch (e) { lines.push(JSON.stringify({ id: d.id, error: String(e) })); }
+  }
+  document.getElementById("out").textContent = lines.join("\n");
+})();
+</script>
