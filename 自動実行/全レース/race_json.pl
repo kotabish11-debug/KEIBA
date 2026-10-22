@@ -191,6 +191,7 @@ for my $i (0 .. $n - 1) {
   my $outer = $u0 && $n >= 10 && $u0 > $n * 0.7; my $inner = $u0 && $n >= 10 && $u0 <= $n * 0.3;
   my ($bw0) = ($bw[$i] // '') =~ /^(\d{3})/;
   if (index($jk, 'ルメール') == 0 && defined $baba && $baba ne '良') { $ja -= 2; push @jw, "ルメール騎手は道悪が苦手(-2)" }
+  if (index($jk, '川田') == 0 && $surf eq '芝' && defined $baba && $baba ne '良') { $ja -= 2; push @jw, "川田騎手は芝の道悪が苦手(-2)" }
   if (index($jk, '戸崎') == 0 && $surf eq 'ダ' && $outer) { $ja += 2; push @jw, "戸崎騎手はダートの外枠が得意(+2)" }
   if (index($jk, '戸崎') == 0 && $inner && $style !~ /逃げ|先行/) { $ja -= 1; push @jw, "戸崎騎手は内枠で包まれるのが苦手(-1)" }
   if (index($jk, '坂井') == 0 && $style eq '差し') { $ja -= 1; push @jw, "坂井騎手は差し馬が苦手(-1)" }
@@ -214,10 +215,17 @@ for my $i (0 .. $n - 1) {
   my $od =($odds[$i] // '') =~ /^([\d.]+)/ ? $1 + 0 : undef;
   my @notes = (($RAW ? "近走の指数(スポーツナビの着差から) " : "Ω指数 ") . (($omega[$i] // '') =~ /^\d+$/ ? $omega[$i] : 'なし'));
   push @notes, "前走 $z->[0]{race} $z->[0]{rank}着" if @$z && $z->[0]{rank};
+  # 3連勝以上(近5走で前走から続く1着の数)。能力値は変えず、シミュレーターの1番人気の不安材料と★の判定に使う(コタの動画、未検証)
+  { my $w = 0; for (@$z) { last unless ($_->{rank} // 0) == 1; $w++ } push @notes, "${w}連勝中" if $w >= 3 }
   push @notes, $mnote if $mnote;
   push @notes, "初出走" unless @$z;
   # トラック替わり(前走と今回で芝・ダートが違う)。能力値は変えず、大穴の軸候補の材料として出す(コタの動画、未検証)
   push @notes, ($surf eq '芝' ? 'ダートから芝替わり' : '芝からダート替わり') if @$z && $surf =~ /^(芝|ダ)$/ && ($z->[0]{surf} // '') =~ /^(芝|ダ)$/ && $z->[0]{surf} ne $surf;
+  # 替わり2戦目: 前走が芝・ダートの替わり初戦で3着以内、今回も同じ馬場(コタの単勝の動画「替わって1回走った馬は続けて走る」。2026年の平場で227頭・市場の勝率の1.2倍だが、期間で差が大きいので能力値は変えない)
+  push @notes, ($surf eq '芝' ? '芝' : 'ダート') . '替わり2戦目(前走好走)' if @$z >= 2 && $surf =~ /^(芝|ダ)$/ && ($z->[0]{surf} // '') eq $surf && ($z->[1]{surf} // '') =~ /^(芝|ダ)$/ && $z->[1]{surf} ne $surf && ($z->[0]{rank} // 99) <= 3;
+  # 善戦型: 近5走(着順のある4走以上)で勝ちがなく2・3着が3回以上。勝率は市場どおりだが3着以内率が高く、単勝より2・3着付けやワイド・3連複の軸向き(コタの単勝の動画。2026年の平場の1〜5番人気で複勝率52%、全体44%)
+  { my @k = grep { $_->{rank} } @$z; my $p23 = grep { $_->{rank} == 2 || $_->{rank} == 3 } @k;
+    push @notes, "善戦型(近" . scalar(@k) . "走で2・3着${p23}回・勝ちなし)" if @k >= 4 && $p23 >= 3 && !grep { $_->{rank} == 1 } @k }
   push @notes, "休み明け($iv)" if (defined $wk && $wk >= 20) || $iv =~ /ヶ月|半年|年/;
   push @notes, "騎手のこのコース連対率 $jr%" if defined $jn && $jn >= 5;
   push @notes, @jw;
@@ -272,6 +280,8 @@ for my $i (0 .. $n - 1) {
     my $p = $z->[0]; my $r = $p->{rank}; my @why; my $adj = 0;
     # 前走逃げて好走: 同じ形を再現できるとは限らない(同型がいればさらに不利。下でまとめて引く)
     if (($p->{first} // 0) == 1 && $r <= 3) { $adj -= 2; push @why, '前走逃げて好走'; $hh{_prevLead} = 1 }
+    # 前走2着: 「次こそ勝つ」と人気しすぎる(コタの単勝の動画で1〜5番人気の単勝回収率72%が最低。2026年の平場1,593レースでも勝率が市場の0.88倍で、前半・後半とも同じ)
+    if ($r == 2) { $adj -= 2; push @why, '前走2着(人気しすぎ)' }
     # 前走の道悪で好走 → 今回良馬場 / 前走の道悪で凡走 → 今回良馬場
     if (defined $baba && $baba eq '良' && ($p->{going} // '') =~ /^(重|不)$/) {
       if ($r <= 3) { $adj -= 3; push @why, '前走は道悪で好走・今回は良' } elsif ($r >= 6) { $adj += 2; push @why, '前走は道悪で凡走・今回は良' }
@@ -290,6 +300,9 @@ for my $i (0 .. $n - 1) {
       if ($good_from && $good_to && $r <= 3) { $adj -= 3; push @why, $surf eq '芝' ? '前走内枠で好走・今回外枠' : '前走外枠で好走・今回内枠' }
       elsif ($bad_from && $bad_to && $r >= 4) { $adj += 2; push @why, $surf eq '芝' ? '前走外枠で凡走・今回内枠' : '前走内枠で凡走・今回外枠' }
     }
+    # 芝→ダートの外枠の先行馬: 外枠なら砂をかぶらずに前へ行け、そのまま内に入れる(コタの動画。2026年4〜10月の平場で23頭・単回収153%、内・中枠の同じ条件は45%)
+    if ($surf eq 'ダ' && defined $u && $n >= 10 && $u > $n * 0.7 && ($p->{surf} // '') eq '芝'
+        && grep { ($_->{surf} // '') eq 'ダ' && ($_->{first} // 99) <= 4 && ($_->{rank} // 99) <= 3 } @$z) { $adj += 2; push @why, '芝からダートの外枠・ダートで先行して好走歴' }
     # 距離ローテ: 東京芝1400は前走1600m以上からの短縮が好成績・1200m以下からの延長は不振。東京ダ1600は短縮が好成績
     my $pd = $p->{dist};
     if ($pd && $place eq '東京' && $surf eq '芝' && $dist == 1400) {
@@ -410,14 +423,16 @@ for my $x (@horses) {
     next unless delete $x->{_extend}; next unless defined $fr; next if $x->{note} =~ /から延長/;
     my $ad = $fr < 0.3 ? 1 : $fr >= 0.4 ? -2 : 0; next unless $ad;
     $x->{choshi} = clamp($x->{choshi} + $ad, 40, 95); my $w = $ad > 0 ? "距離延長・前に行く馬が少なく落ち着きそう(+1)" : "距離延長・前に行く馬が多く流れが速そう(-2)"; $x->{note} =~ s/(\(自動計算\))$/・$w$1/ } }
-# 仮オッズ: オッズがまだ無い馬は、能力値から人気を想定して付ける(1/オッズの合計が約1.25)
-my %W = (jisseki => .35, kyori => .15, course => .15, choshi => .20, kishu => .15);
+# 仮オッズ: オッズがまだ無い馬は、能力値から人気を想定して付ける(1/オッズの合計は実際の平均の約1.26)
+# exp(点数/8): 2026年4〜10月の平場1,868レースで、実際の単勝オッズの勝率に一番近い温度(以前の /4 は1番手の馬を強く見すぎ)
+my %W = (jisseki => .28, kyori => .17, course => .055, choshi => .245, kishu => .25);
 my @score = map { my $x = $_; my $s = 0; $s += $W{$_} * $x->{$_} for keys %W; $s } @horses;
-my @e = map { exp($_ / 4) } @score; my $sum = 0; $sum += $_ for @e;
-for my $i (0 .. $#horses) { next if defined $horses[$i]{odds}; my $p = $e[$i] / $sum * 1.25; $horses[$i]{odds} = clamp(int(1 / $p * 10 + 0.5) / 10, 1.2, 300) }
+my @e = map { exp($_ / 8) } @score; my $sum = 0; $sum += $_ for @e;
+for my $i (0 .. $#horses) { next if defined $horses[$i]{odds}; my $p = $e[$i] / $sum * 1.26; $horses[$i]{odds} = clamp(int(1 / $p * 10 + 0.5) / 10, 1.2, 300) }
 @horses = sort { ($a->{umaban} // 99) <=> ($b->{umaban} // 99) } @horses;
 
-my $chaos = 8.5; $chaos = 9.5 if $cls =~ /2歳|新馬/ || $weight_rule eq 'ハンデ'; $chaos = 9 if $surf eq '障';
+# 波乱度(乱数の大きさ): 2026年4〜10月の平場1,868レースで、オッズが出る前(能力値だけ)の1〜3着が一番当たる値。オッズを混ぜた後の3着以内率はほとんど変わらない
+my $chaos = 16; $chaos = 20 if $cls =~ /2歳|新馬/ || $weight_rule eq 'ハンデ'; $chaos = 12 if $surf eq "障";
 my $nowj = do { my @t = gmtime(time + 9 * 3600); sprintf('%04d-%02d-%02dT%02d:%02d:00+09:00', $t[5] + 1900, $t[4] + 1, $t[3], $t[2], $t[1]) };
 my %doc = (id => "k$kid", name => $rname, grade => '', date => $date, place => $place, no => $no + 0, time => $time,
   surface => $surf, dist => $dist + 0, dir => $dir, courseNote => ($straight ? '直線' : ''), cond => $cond,

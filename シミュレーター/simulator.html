@@ -677,7 +677,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
           <div class="pace-probs" id="paceProbs"></div>
         </div>
         <div class="field"><label for="chaos">波乱度 <span class="num" id="chaosVal"></span></label>
-          <input type="range" id="chaos" min="4" max="14" step="0.5" value="8">
+          <input type="range" id="chaos" min="4" max="24" step="0.5" value="8">
           <span class="small">大きいほど実力どおりに決まりにくい(GIの標準は8前後)</span>
         </div>
         <div class="field"><label for="blend">オッズの比重 <span class="num" id="blendVal"></span></label>
@@ -824,7 +824,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
 
   // ---------------- データ ----------------
   // 能力値の重み。結果の振り返りから最適化した値が db の config/model に届くと置き換わる
-  const WEIGHTS = { jisseki: 0.35, kyori: 0.15, course: 0.15, choshi: 0.20, kishu: 0.15 };
+  const WEIGHTS = { jisseki: 0.28, kyori: 0.17, course: 0.055, choshi: 0.245, kishu: 0.25 };
   let MODEL = { starTop3: 0.8 };
   const FACTORS = [["jisseki", "実績"], ["kyori", "距離"], ["course", "コース"], ["choshi", "調子"], ["kishu", "騎手"]];
   const STYLES_RUN = ["逃げ", "先行", "差し", "追込"];
@@ -979,7 +979,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       date: dateLong(d.date), time: d.time ? d.time + "発走" : "",
       course: `${d.surface || "芝"} ${d.dir || ""} ${num(d.dist, "")}m${d.courseNote ? "(" + d.courseNote + ")" : ""}`.replace(/\s+/g, " "),
       cond: String(d.cond || ""), heads: d.horses.filter(h => !h.scratched).length,
-      weather: String(d.weather || ""), goingDefault: 0, chaos: num(d.chaos, 8),
+      weather: String(d.weather || ""), goingDefault: 0, chaos: num(d.chaos, 16),
       courseBias: cbias, drawBias: dbias, dayJp: d.dayBias && typeof d.dayBias === "object" ? num(d.dayBias.jp, 0) : 0, dayDraw: d.dayBias && typeof d.dayBias === "object" ? num(d.dayBias.draw, 0) : 0, paceScale: PACE_BIG_PLACES.includes(String(d.place || "")) ? 1.25 : 1,
       horses: d.horses.map(h => ({
         name: String(h.name), jockey: String(h.jockey || "未定"),
@@ -1018,7 +1018,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   let roster = clone(race.horses);
   let horses = roster;
   function defaultSettings() {
-    return { budget: 3000, style: "balance", evMin: "1.1", going: String(race.goingDefault || 0), manGoing: false, pace: "auto", chaos: race.chaos || 8, runs: String(MIN_RUNS), blend: 90, bv: 2 };
+    return { budget: 3000, style: "balance", evMin: "1.1", going: String(race.goingDefault || 0), manGoing: false, pace: "auto", chaos: race.chaos || 16, runs: String(MIN_RUNS), blend: 90, bv: 2 };
   }
   let settings = defaultSettings();
   // シミュレーション回数の下限(ユーザーの指定)。以前に保存した5,000回・20,000回はここまで引き上げる
@@ -1079,7 +1079,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   function save() {
     try {
       const st = Object.assign({}, settings);
-      if (Number(st.chaos) === Number(race.chaos || 8)) delete st.chaos;
+      if (Number(st.chaos) === Number(race.chaos || 16)) delete st.chaos;
       if (!st.manGoing) delete st.going;
       const hs = [];
       for (const h of roster) {
@@ -1453,8 +1453,9 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   function pickBets(cands, styleKey, evMinV) {
     const st = STYLES_BET[styleKey || settings.style];
     const evMin = Number(evMinV || settings.evMin);
-    // 単勝は4〜9.9倍が長期の回収率がいちばん高い帯。3.9倍以下(勝ち切る難しさに対して戻りが小さい)と10倍以上(2・3着止まりが増える)は、期待値に余裕があるときだけ
-    const tanBand = c => c.type !== "単勝" || (c.odds >= 4 && c.odds < 10) || c.ev >= evMin + 0.2;
+    // 単勝は4〜9.9倍が長期の回収率がいちばん高い帯。3.9倍以下(勝ち切る難しさに対して戻りが小さい)は、期待値に余裕があるときだけ。
+    // 10倍以上は買わない: 2026年4〜10月の平場1,868レースで、10倍以上の単勝は期待値が高く出るほど外れ(期待値1.1以上の259点で回収率15%)、能力値が人気薄を高く見すぎていた
+    const tanBand = c => c.type !== "単勝" || (c.odds < 10 && (c.odds >= 4 || c.ev >= evMin + 0.2));
     // 3連単は◎(勝率1位)が1着のときのボーナスとして、◎の1着固定だけを買う。1着を入れ替える組(マルチの形)は点数が増えるのに配当が見合わない(出典: 馬情報/馬券の買い方_3連単とNGな買い方.md)
     const tans = cands.filter(c => c.type === "単勝");
     const head = tans.length ? tans.reduce((a, b) => (b.p > a.p ? b : a)).h[0] : -1;

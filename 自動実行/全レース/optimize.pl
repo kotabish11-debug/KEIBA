@@ -1,16 +1,17 @@
 # 予想と結果の記録から、能力値の重み(実績・距離・コース・調子・騎手)と★の基準を調整する
 # 使い方: perl optimize.pl <馬ごとの記録.csv> <レースごとの記録.csv> <今のmodel.json> > 新しいmodel.json
-# - 重み: 勝ち馬が高い点数になるように(条件付きロジット)当てはめ、記録が少ないうちは今の重みに強く寄せる
+# - 重み: 勝ち馬が高い点数になるように(条件付きロジット)当てはめ、過去の平場1,868レースで当てはめた重み(%prior)に寄せる
+#   (前回の値に寄せると、2時間おきに同じ記録で当てはめ直すたびにずれが積み重なるので、寄せ先は固定)
 # - ★の基準(◎の3着以内率がこれ以上なら★): ★を付けたレースの◎の3着以内率が83%を下回れば上げ、92%以上なら少し下げる
 use utf8; use strict; use warnings;
 binmode STDOUT, ':utf8';
 use JSON::PP;
 my ($hf, $rf, $mf) = @ARGV;
 my @K = qw(jisseki kyori course choshi kishu);
-my %prior = (jisseki => .35, kyori => .15, course => .15, choshi => .20, kishu => .15);
+my %prior = (jisseki => .28, kyori => .17, course => .055, choshi => .245, kishu => .25); my $PRIOR_N = 1868;   # 2026年4/1〜10/19の平場で当てはめ(馬情報/的中率を上げるための検証.md の10)
 my $model = { weights => {%prior}, starTop3 => 0.80 };
 if ($mf && -e $mf) { open my $m, '<:raw', $mf; local $/; my $x = JSON::PP->new->utf8->decode(<$m>); $model = $x if ref $x eq 'HASH' }
-my %cur = %{$model->{weights}};
+my %cur = %prior;
 
 sub read_csv { my $f = shift; my @rows; return @rows unless -e $f; open my $fh, '<:utf8', $f or return @rows; my $hd = <$fh>; chomp $hd; $hd =~ s/^\x{feff}//; my @h = split /,/, $hd;
   while (<$fh>) { chomp; s/\r$//; my @v = split /,/, $_, -1; my %r; @r{@h} = @v; push @rows, \%r } return @rows }
@@ -42,8 +43,8 @@ if ($N >= 10) {
     $lam += $lr * ($gl / $N - 0.1 * ($lam - 1)); $lam = 0.1 if $lam < 0.1;
   }
   my $z = 0; $z += exp($th{$_}) for @K; my %fit = map { $_ => exp($th{$_}) / $z } @K;
-  # 記録が少ないうちは今の重みに寄せる(50レースで半々)
-  my $a = $N / ($N + 50);
+  # 過去の当てはめ(1,868レース)に寄せる。記録が同じレース数になって半々
+  my $a = $N / ($N + $PRIOR_N);
   %w = map { $_ => $a * $fit{$_} + (1 - $a) * $cur{$_} } @K;
   # 1項目は 0.05〜0.6 の範囲にして合計1に
   $w{$_} = $w{$_} < 0.05 ? 0.05 : $w{$_} > 0.6 ? 0.6 : $w{$_} for @K; my $t = 0; $t += $w{$_} for @K; $w{$_} = int($w{$_} / $t * 1000 + 0.5) / 1000 for @K;

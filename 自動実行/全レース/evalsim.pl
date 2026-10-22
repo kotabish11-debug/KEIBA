@@ -7,7 +7,7 @@ binmode STDOUT, ':utf8'; binmode STDERR, ':utf8';
 use JSON::PP;
 my ($mf, @dirs) = @ARGV;
 my $J = JSON::PP->new->utf8;
-my %W = (jisseki => .35, kyori => .15, course => .15, choshi => .20, kishu => .15);
+my %W = (jisseki => .28, kyori => .17, course => .055, choshi => .245, kishu => .25);
 if ($mf && -e $mf) { open my $m, '<:raw', $mf; local $/; my $x = $J->decode(<$m>); %W = %{$x->{weights}} if ref $x->{weights} eq 'HASH' }
 my @races;
 # 引数はフォルダー(1レース1ファイル)か、まとめた .jsonl.gz(馬情報/過去レースデータ/)

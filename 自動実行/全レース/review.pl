@@ -9,7 +9,7 @@ my ($rf, $resf, $mf) = @ARGV;
 sub readj { my $f = shift; open my $fh, '<:raw', $f or die "cannot open $f"; local $/; my $d = JSON::PP->new->utf8->decode(<$fh>); return $d }
 my $race = readj($rf); $race = $race->{data} if ref $race->{data} eq 'HASH';
 my $res = readj($resf);
-my %W = (jisseki => .35, kyori => .15, course => .15, choshi => .20, kishu => .15);
+my %W = (jisseki => .28, kyori => .17, course => .055, choshi => .245, kishu => .25);
 my $star_p = 0.80;
 if ($mf && -e $mf) { my $m = readj($mf); %W = %{$m->{weights}} if ref $m->{weights} eq 'HASH'; $star_p = $m->{starTop3} if $m->{starTop3} }
 my @FAC = (['jisseki', '実績'], ['kyori', '距離'], ['course', 'コース'], ['choshi', '調子'], ['kishu', '騎手']);

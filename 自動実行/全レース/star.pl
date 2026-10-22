@@ -7,7 +7,7 @@ use JSON::PP;
 my ($rf, $mf) = @ARGV;
 sub readj { my $f = shift; open my $fh, '<:raw', $f or die "cannot open $f"; local $/; JSON::PP->new->utf8->decode(<$fh>) }
 my $race = readj($rf); $race = $race->{data} if ref $race->{data} eq 'HASH';
-my %W = (jisseki => .35, kyori => .15, course => .15, choshi => .20, kishu => .15); my $thr = 0.80;
+my %W = (jisseki => .28, kyori => .17, course => .055, choshi => .245, kishu => .25); my $thr = 0.80;
 if ($mf && -e $mf) { my $m = readj($mf); %W = %{$m->{weights}} if ref $m->{weights} eq 'HASH'; $thr = $m->{starTop3} if $m->{starTop3} }
 my @hs = grep { !$_->{scratched} } @{$race->{horses} || []};
 my $n = @hs; if ($n < 3) { print encode_json({ star => JSON::PP::false }); exit }
@@ -19,7 +19,7 @@ $bias = $race->{courseBias} if ref $race->{courseBias} eq 'HASH'; $draw = $race-
 my $going = $race->{going} // 0; my $total = scalar @{$race->{horses}};
 my @fixed = map { my $h = $_; my $s = 0; $s += $W{$_} * ($h->{$_} // 60) for keys %W; $s += $bias->{$h->{style} // '差し'} // 0;
   my $u = $h->{umaban} // 0; $s += $draw * (1 - 2 * ($u - 1) / ($total > 1 ? $total - 1 : 1)) if $u >= 1; $s += ($h->{heavy} // 0) * $going * 0.9; $s } @hs;
-my $sigma = ($race->{chaos} // 8) + $going * 0.6;
+my $sigma = ($race->{chaos} // 16) + $going * 0.6;
 my %PA = (high => { '逃げ' => -5, '先行' => -2, '差し' => 2, '追込' => 3 }, mid => { '逃げ' => 0, '先行' => 0.5, '差し' => 0, '追込' => -0.5 }, slow => { '逃げ' => 4, '先行' => 2, '差し' => -1.5, '追込' => -4 });
 my $nige = grep { ($_->{style} // '') eq '逃げ' } @hs; my $sen = grep { ($_->{style} // '') eq '先行' } @hs;
 my ($hi, $mid, $slow) = (0.25, 0.45, 0.30);
