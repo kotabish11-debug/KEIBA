@@ -68,7 +68,8 @@ fi
 docid_of() { perl -MJSON::PP -0777 -ne 'my $d = JSON::PP->new->utf8->decode($_); print $d->{id} // ""' "$1"; }
 field_of() { [ -f "$1" ] || return 0; perl -MJSON::PP -0777 -ne 'my $d = JSON::PP->new->utf8->decode($_); $d = $d->{data} if ref $d->{data} eq "HASH"; print $d->{'"$2"'} // ""' "$1"; }
 
-for off in -1 0 1 2; do
+# 出馬表が出ていれば先の日も入れる(木曜に日曜・祝日月曜の登録が出る)。R1が無い日は1回の取得で飛ばすので軽い
+for off in -1 $(seq 0 "${AHEAD:-6}"); do
   D=$(TZ=JST-9 date -d "$off day" +%Y%m%d); DISO="${D:0:4}-${D:4:2}-${D:6:2}"
   for V in $VENUES; do
     for R in 01 02 03 04 05 06 07 08 09 10 11 12; do
