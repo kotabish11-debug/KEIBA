@@ -1,5 +1,6 @@
 # 競馬ラボの馬柱ページ1つから、シミュレーター用のレースデータ(JSON)を作る。能力値はデータから自動で計算する
 # 使い方: perl race_json.pl <umabashira.html> <競馬ラボのレースID> > out.json
+#   keibalab.jp に接続できないときは、スポーツナビから作った素データ(yahoo.pl raw の出力、拡張子 .json)を馬柱の代わりに渡せる
 # 重賞(G1・G2・G3・J重賞)は Claude が判断材料を見て能力値を付けるので、ここでは作らない(終了コード 3)
 # 出走馬が出ていないページは終了コード 2
 use utf8; use strict; use warnings;
@@ -9,6 +10,7 @@ use JSON::PP;
 my ($file, $kid) = @ARGV;
 open my $fh, '<:utf8', $file or die "cannot open $file";
 local $/; my $h = <$fh>;
+my $RAW = $file =~ /\.json$/ ? JSON::PP->new->decode($h) : undef;
 
 sub txt { my $t = shift // ''; $t =~ s/<[^>]*>//g; $t =~ s/&nbsp;/ /g; $t =~ s/\s+/ /g; $t =~ s/^ | $//g; $t }
 sub sect { my $n = shift; return $1 if $h =~ /<!-- \Q$n\E -->(.*?)<!-- /s; '' }
@@ -28,7 +30,7 @@ sub top_tds {
 
 # ---- レース情報 ----
 my ($title) = $h =~ /<title>([^<|]*)/; $title //= '';
-exit 2 if $title =~ /レース一覧/ || $title eq '';
+exit 2 if !$RAW && ($title =~ /レース一覧/ || $title eq '');
 # 重賞の判定: タイトルには格が無いので、本文の「レース名 (ＧⅠ)」の表記で見る
 my $body = txt($h);
 my $grade = '';
@@ -39,14 +41,14 @@ if ($body =~ /[(（]\s*(Ｊ・|J・|Ｊ|J)?\s*(ＧⅠ|ＧⅡ|ＧⅢ|GⅠ|GⅡ|G�
 exit 3 if $grade;
 my ($rname) = $title =~ /^\s*(.*?)【/; $rname //= $title; $rname =~ s/^サラ系//; $rname =~ s/の馬柱$//; $rname =~ s/(出馬表|、予想).*$//; $rname =~ s/\s+$//;
 my ($y, $mo, $d, $place, $no) = $title =~ /【(\d{4})年(\d{1,2})月(\d{1,2})日(\D+?)(\d{1,2})R】/;
-exit 2 unless $y;
-my $date = sprintf('%04d-%02d-%02d', $y, $mo, $d);
+exit 2 unless $y || $RAW;
+my $date = $RAW ? '' : sprintf('%04d-%02d-%02d', $y, $mo, $d);
 my $page = txt($h);
 my ($surf, $dist, $heads, $time) = $page =~ /(芝|ダ|障)(?:\S*?)(\d{3,4})m (\d+)頭 ?(\d{1,2}:\d{2})発走/;
 $surf //= '芝'; $dist //= 0; $time //= '';
 my $straight = $page =~ /直(?:線)?\s*1000m|直1000/ ? 1 : 0;
 my %dirs = ('東京' => '左', '新潟' => '左', '京都' => '右', '中山' => '右', '阪神' => '右', '中京' => '左', '福島' => '右', '小倉' => '右', '札幌' => '右', '函館' => '右');
-my $dir = $straight ? '直' : ($dirs{$place} // '');
+my $dir = $straight ? '直' : ($dirs{$place // ''} // '');
 my ($weight_rule) = $page =~ /(定量|別定|馬齢|ハンデ)/; $weight_rule //= '';
 my ($cls) = $page =~ /(\d歳(?:以上|上)?(?:新馬|未勝利|\d勝クラス|オープン)|障害\S*?(?:未勝利|オープン))/; $cls //= '';
 my $cond = join(' ', grep { $_ ne '' } $cls, $weight_rule);
@@ -55,7 +57,7 @@ my ($baba) = $page =~ /\| ?(良|稍重|重|不良) ?\|/;
 # ---- 出走馬 ----
 my $nm = sect('馬名等');
 my %seen; my @names = grep { !$seen{$_}++ } ($nm =~ /data-hsnm="([^"]+)"/g);
-my $n = @names; exit 2 if $n < 2;
+my $n = @names; exit 2 if $n < 2 && !$RAW;
 sub row { my $s = sect(shift); my @c = map { txt($_) } top_tds($s); return @c[-$n .. -1] if @c >= $n; return () }
 my @umaban = row('馬番'); my @waku = row('枠番');
 my @jockey = row('騎手'); my @kin = row('斤量'); my @odds = row('単勝'); my @bw = row('馬体重');
@@ -119,6 +121,21 @@ my %SIRE_US = map { $_ => 1 } grep { $STYPE{$_} eq '米国' } keys %STYPE;
 my %damsire; { my $cur; while ($nm =~ /data-hsnm="([^"]+)"|class="tategaki hahachichi[^"]*">\s*(.*?)\s*<\/p>/sg) { if (defined $1) { $cur = $1 } elsif ($cur && !exists $damsire{$cur}) { (my $d = txt($2)) =~ s/[()（）]//g; $d =~ s/’/'/g; $damsire{$cur} = $d } } }
 # 脚質マーク(逃・先・差・追の順に▲が付く)
 my @legs; while ($nm =~ /<ul class="dbrunstyle2 legs">(.*?)<\/ul>/sg) { push @legs, [map { txt($_) } ($1 =~ /<li[^>]*>(.*?)<\/li>/sg)] }
+# スポーツナビの素データ: 馬柱から読む値をそのまま入れる(Ω指数・騎手のコース連対率・調教師×騎手・前走の馬場とペースは無い)
+if ($RAW) {
+  ($rname, $date, $place, $no, $surf, $dist, $time, $weight_rule, $cls, $baba) = map { $RAW->{$_} // '' } qw(name date place no surface dist time weightRule cls baba);
+  $baba = undef if $baba eq '';
+  ($y, $mo, $d) = map { $_ + 0 } split /-/, $date; $straight = $RAW->{straight} ? 1 : 0; $dir = $straight ? '直' : ($dirs{$place} // '');
+  $cond = join(' ', grep { $_ ne '' } $cls, $weight_rule);
+  my @H = @{$RAW->{horses} || []}; $n = @H; exit 2 if $n < 2;
+  my $col = sub { my $k = shift; map { $_->{$k} // '' } @H };
+  @names = $col->('name'); @umaban = $col->('umaban'); @waku = $col->('waku'); @jockey = $col->('jockey'); @kin = $col->('kin');
+  @odds = $col->('odds'); @bw = $col->('bw'); @intv = $col->('intv'); @omega = $col->('omega'); @sexage = $col->('sexage');
+  @jc = map { '' } @H; @tj = ();
+  @rdist = map { $_->{rdist} } @H; @rcourse = map { $_->{rcourse} } @H; @rgoing = map { undef } @H;
+  @zen = map { $_->{zen} || [] } @H; @legs = ();
+  %sire = map { ($_->{name} => $_->{sire}) } grep { $_->{sire} } @H; %damsire = map { ($_->{name} => $_->{damsire}) } grep { $_->{damsire} } @H;
+}
 
 my @STY = ('逃げ', '先行', '差し', '追込');
 sub rate { my $r = shift; return (undef, 0) unless $r; my ($w, $p2, $p3, $o) = map { $_ // 0 } @$r; my $runs = $w + $p2 + $p3 + $o; return (undef, 0) unless $runs; return (($w + 0.7 * $p2 + 0.5 * $p3) / $runs, $runs) }
@@ -195,7 +212,7 @@ for my $i (0 .. $n - 1) {
   if (!$sadj && $wruns <= 2 && $surf eq '芝' && $dist >= 2200 && $cls =~ /以上|上/ && grep { ($STYPE{$_} // '') eq '欧州' } $sire, $dsire) {
     $heavy = clamp($heavy + 1, -2, 2); $enote = (($STYPE{$sire} // '') eq '欧州' ? "父${sire}" : "母父${dsire}") . 'が欧州型(古馬の芝長距離の道悪 +1)' }
   my $od =($odds[$i] // '') =~ /^([\d.]+)/ ? $1 + 0 : undef;
-  my @notes = ("Ω指数 " . (($omega[$i] // '') =~ /^\d+$/ ? $omega[$i] : 'なし'));
+  my @notes = (($RAW ? "近走の指数(スポーツナビの着差から) " : "Ω指数 ") . (($omega[$i] // '') =~ /^\d+$/ ? $omega[$i] : 'なし'));
   push @notes, "前走 $z->[0]{race} $z->[0]{rank}着" if @$z && $z->[0]{rank};
   push @notes, $mnote if $mnote;
   push @notes, "初出走" unless @$z;
@@ -406,6 +423,9 @@ my %doc = (id => "k$kid", name => $rname, grade => '', date => $date, place => $
   surface => $surf, dist => $dist + 0, dir => $dir, courseNote => ($straight ? '直線' : ''), cond => $cond,
   stage => ((grep { defined $_->{umaban} } @horses) ? '枠順確定' : '出走確定'), chaos => $chaos,
   weather => '', going => (defined $baba ? {'良' => 0, '稍重' => 1, '重' => 2, '不良' => 3}->{$baba} : undef),
-  updatedAt => $nowj, source => '競馬ラボ(能力値は自動計算)', memo => '全レース自動追加。能力値はΩ指数・距離/コース成績・前走・騎手のコース連対率から自動で計算',
+  updatedAt => $nowj, source => ($RAW ? 'スポーツナビ(能力値は自動計算)' : '競馬ラボ(能力値は自動計算)'),
+  memo => ($RAW ? '全レース自動追加。競馬ラボに接続できなかったため、スポーツナビの出馬表と近走から計算(Ω指数の代わりに近走の着差、騎手のコース連対率なし)' : '全レース自動追加。能力値はΩ指数・距離/コース成績・前走・騎手のコース連対率から自動で計算'),
   auto => JSON::PP::true, keibalabId => "$kid", horses => \@horses);
+# スポーツナビの素データは残しておき、次の実行では馬ページを取り直さずに使う(yahoo.pl raw の「前回のdbのデータ」)
+$doc{yahooRaw} = $RAW if $RAW;
 print JSON::PP->new->canonical->pretty->encode(\%doc);

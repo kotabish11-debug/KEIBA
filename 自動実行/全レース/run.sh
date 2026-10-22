@@ -2,6 +2,8 @@
 # 東京・京都・新潟の全レースを集めてシミュレーター用のデータを作り、終わったレースは振り返り、重みを最適化する
 # 使い方: bash 自動実行/全レース/run.sh <出力フォルダー> [dbを保存したフォルダー]
 #   dbを保存したフォルダー: ArtifactData の list(collection "races", out_dir 指定)で保存した場所。races/<id>.json を探す
+# 取得元: 競馬ラボ(keibalab.jp)につながらなければ、スポーツナビ(yahoo.pl)の出馬表・馬ページ・結果で作る。SOURCE=yahoo か SOURCE=keibalab で決め打ちできる
+#   スポーツナビでは馬ページを1頭ずつ取るので、1回の実行で取るのは YBUDGET 秒(既定300)まで。取り切れなかったレースは次の実行に回す
 # 出力: <出力フォルダー>/manifest.tsv に「何をdbに書くか」を1行ずつ出す(定期実行のClaudeがこれを見て書き込む)
 #   race   <doc_id> <file>  … races/<doc_id> を set(新規または作り直し)
 #   update <doc_id> <file>  … races/<doc_id> を update(★・結果・振り返りを足す)
@@ -16,6 +18,37 @@ mkdir -p "$OUT/races" "$OUT/updates" "$OUT/tmp" "$ROOT/馬情報/振り返り"
 : > "$OUT/manifest.tsv"
 UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
 get() { curl -sSL -A "$UA" -H "Accept-Language: ja" -o "$2" "https://www.keibalab.jp/db/race/$1"; sleep 1.5; }
+SOURCE="${SOURCE:-}"
+if [ -z "$SOURCE" ]; then
+  SOURCE=keibalab
+  curl -sS -m 20 -o /dev/null -A "$UA" https://www.keibalab.jp/ 2>/dev/null || { sleep 10; curl -sS -m 20 -o /dev/null -A "$UA" https://www.keibalab.jp/ 2>/dev/null; } || SOURCE=yahoo
+fi
+echo "取得元: $SOURCE"
+YBUDGET="${YBUDGET:-300}"; YSTART=$SECONDS; HC="$OUT/hc"; mkdir -p "$HC"
+yget() { curl -sSL -A "$UA" -o "$2" "https://sports.yahoo.co.jp/keiba/$1"; sleep 0.3; }
+# 日付と場コード → スポーツナビの開催ID(8桁: 年2+場2+回2+日2)を YK に入れる(月の日程ページから引く)
+declare -A YKAI
+ykai() {
+  local key="$1 $2"
+  if [ -z "${YKAI[$key]+x}" ]; then
+    local sf="$OUT/tmp/sch_${1:0:4}${1:5:2}.html"
+    [ -s "$sf" ] || yget "schedule/monthly/?year=${1:0:4}&month=$((10#${1:5:2}))" "$sf"
+    YKAI[$key]=$(perl "$HERE/yahoo.pl" list "$sf" "$1" "$2" 2>/dev/null)
+  fi
+  YK="${YKAI[$key]}"
+}
+# スポーツナビの出馬表と馬ページから $OUT/tmp/r_$ID.json を作る(終了コードは race_json.pl と同じ。馬ページが取り切れなければ 4)
+ybuild() {
+  ykai "$DISO" "$V"; [ -z "$YK" ] && return 2
+  yget "race/denma/$YK$R" "$OUT/tmp/yd_$ID.html"
+  # 馬ページは3つずつ並べて取る(取得済みの馬は飛ばす)。持ち時間を過ぎたら取らない
+  if [ $((SECONDS - YSTART)) -lt "$YBUDGET" ]; then
+    perl "$HERE/yahoo.pl" need "$OUT/tmp/yd_$ID.html" "$DBFILE" | while read -r hid; do [ -s "$HC/$hid.html" ] || echo "$hid"; done |
+      xargs -r -P 3 -I{} sh -c 'curl -sSL -m 30 -A "$1" -o "$2/{}.html" "https://sports.yahoo.co.jp/keiba/directory/horse/{}/"; sleep 0.3' _ "$UA" "$HC"
+  fi
+  perl "$HERE/yahoo.pl" raw "$OUT/tmp/yd_$ID.html" "$HC" "$ID" "$DBFILE" > "$OUT/tmp/yr_$ID.json" || return $?
+  perl "$HERE/race_json.pl" "$OUT/tmp/yr_$ID.json" "$ID" > "$OUT/tmp/r_$ID.json"
+}
 NOW=$(TZ=JST-9 date +%Y%m%d%H%M)
 declare -A PLACE=( [04]=新潟 [05]=東京 [08]=京都 [06]=中山 [09]=阪神 [07]=中京 [01]=札幌 [02]=函館 [03]=福島 [10]=小倉 )
 [ -f "$LOGR" ] || echo "raceId,date,place,no,name,grade,star,starProb,honmei,honmeiRank,winner,winnerPop,winnerPredRank,hits3" > "$LOGR"
@@ -33,7 +66,7 @@ if [ -n "$DBDIR" ]; then
       binmode STDOUT, ":utf8"; print "$x->{date} $x->{place} " . ($x->{no} // "") . "\t$f\n" }')
 fi
 docid_of() { perl -MJSON::PP -0777 -ne 'my $d = JSON::PP->new->utf8->decode($_); print $d->{id} // ""' "$1"; }
-field_of() { perl -MJSON::PP -0777 -ne 'my $d = JSON::PP->new->utf8->decode($_); $d = $d->{data} if ref $d->{data} eq "HASH"; print $d->{'"$2"'} // ""' "$1"; }
+field_of() { [ -f "$1" ] || return 0; perl -MJSON::PP -0777 -ne 'my $d = JSON::PP->new->utf8->decode($_); $d = $d->{data} if ref $d->{data} eq "HASH"; print $d->{'"$2"'} // ""' "$1"; }
 
 for off in -1 0 1 2; do
   D=$(TZ=JST-9 date -d "$off day" +%Y%m%d); DISO="${D:0:4}-${D:4:2}-${D:6:2}"
@@ -46,8 +79,11 @@ for off in -1 0 1 2; do
       # 発走時刻を過ぎて15分たっていれば、結果を取りにいく
       TIME=""; [ -n "$DBFILE" ] && TIME=$(field_of "$DBFILE" time)
       if [ -z "$DBFILE" ] || [ "$off" -ge 0 ]; then
-        get "$ID/umabashira.html" "$OUT/tmp/u_$ID.html"
-        perl "$HERE/race_json.pl" "$OUT/tmp/u_$ID.html" "$ID" > "$OUT/tmp/r_$ID.json"; RC=$?
+        if [ "$SOURCE" = yahoo ]; then ybuild; RC=$?
+        else
+          get "$ID/umabashira.html" "$OUT/tmp/u_$ID.html"
+          perl "$HERE/race_json.pl" "$OUT/tmp/u_$ID.html" "$ID" > "$OUT/tmp/r_$ID.json"; RC=$?
+        fi
         if [ $RC -eq 2 ]; then [ "$R" = "01" ] && break; continue; fi
         [ -z "$TIME" ] && TIME=$(field_of "$OUT/tmp/r_$ID.json" time)
       else RC=9; fi
@@ -74,8 +110,14 @@ for off in -1 0 1 2; do
         continue
       fi
       # 終わったレース: 結果を取り、予想(dbのデータ。無ければ作り直したもの)と比べる
-      get "$ID/raceresult.html" "$OUT/tmp/res_$ID.html"
-      perl "$HERE/result_json.pl" "$OUT/tmp/res_$ID.html" > "$OUT/tmp/res_$ID.json" || continue
+      if [ "$SOURCE" = yahoo ]; then
+        ykai "$DISO" "$V"; [ -z "$YK" ] && continue
+        yget "race/result/$YK$R" "$OUT/tmp/res_$ID.html"
+        perl "$HERE/yahoo.pl" result "$OUT/tmp/res_$ID.html" > "$OUT/tmp/res_$ID.json" || continue
+      else
+        get "$ID/raceresult.html" "$OUT/tmp/res_$ID.html"
+        perl "$HERE/result_json.pl" "$OUT/tmp/res_$ID.html" > "$OUT/tmp/res_$ID.json" || continue
+      fi
       PRED="$DBFILE"; [ -z "$PRED" ] && [ $RC -eq 0 ] && PRED="$OUT/tmp/r_$ID.json"
       [ -z "$PRED" ] && continue
       DOC=$(docid_of "$PRED"); [ -z "$DOC" ] && DOC="k$ID"
