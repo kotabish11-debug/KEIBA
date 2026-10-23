@@ -8,8 +8,8 @@
 
 手順:
 1. `TZ=Asia/Tokyo date` で日本時間を確認し、`CLAUDE.md` と `情報収集の手順.md` を読む。ToolSearch で "select:ArtifactData" を読み込む。作業用フォルダー W=$(mktemp -d) を作る。
-2. 全レース(競馬ラボ版): ArtifactData の list(collection "races"、out_dir に $W/db、next_cursor があれば最後まで)で今のレースデータを保存して各 version を控え、config/model も get して version を控える。
-   `SOURCE=keibalab bash 自動実行/全レース/run.sh $W/out $W/db` を実行する(Bash のタイムアウトは10分)。$W/out/manifest.tsv の各行を db に書く:
+2. 全レース(JRA公式版。2026-10-23 ユーザー指示でJRAがメイン。競馬ラボ版は使わない): ArtifactData の list(collection "races"、out_dir に $W/db、next_cursor があれば最後まで)で今のレースデータを保存して各 version を控え、config/model も get して version を控える。
+   `bash 自動実行/全レース/run.sh $W/out $W/db` を実行する(Bash のタイムアウトは10分)。$W/out/manifest.tsv の各行を db に書く:
    - `race <doc_id> <file>` → races/<doc_id> を set(既存なら控えた version を if_version に)
    - `update <doc_id> <file>` → races/<doc_id> を update(if_version 必須)
    - `model config/model <file>` → config/model を set(既存なら if_version)
@@ -24,6 +24,6 @@
    - チャンネルの資料(channels.tsv の3列目)に、採用・既存・不採用(検証結果つき)を自分の言葉で追記する(出典と「数値は動画内の説明で未検証」を明記)
    - 読み終えたファイルは `自動実行/YouTube/処理済み/` に移す(文字起こしはコミットしない)。seen.txt はコミットする
 5. `馬情報/情報収集ログ.md` の末尾に「- YYYY-MM-DD HH:MM PC収集: <やったことを1行>」を追記する。
-6. 変えたファイルだけを `git add <パス>` してコミットし(メッセージ例: 「PC収集 2026-10-24 10:30 全レース(競馬ラボ)・菊花賞判断材料」)、`git push origin main` する。競合したら `git pull --rebase --autostash origin main` してから再度 push。rebase が止まったら `git rebase --abort` してログに書き、終了する。
+6. 変えたファイルだけを `git add <パス>` してコミットし(メッセージ例: 「PC収集 2026-10-24 10:30 全レース(JRA)・菊花賞判断材料」)、`git push origin main` する。競合したら `git pull --rebase --autostash origin main` してから再度 push。rebase が止まったら `git rebase --abort` してログに書き、終了する。
 
 最後に、反映した内容を日本語で3行以内にまとめて終了する。

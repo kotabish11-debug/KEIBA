@@ -2,8 +2,9 @@
 # 東京・京都・新潟の全レースを集めてシミュレーター用のデータを作り、終わったレースは振り返り、重みを最適化する
 # 使い方: bash 自動実行/全レース/run.sh <出力フォルダー> [dbを保存したフォルダー]
 #   dbを保存したフォルダー: ArtifactData の list(collection "races", out_dir 指定)で保存した場所。races/<id>.json を探す
-# 取得元: 競馬ラボ(keibalab.jp)につながらなければ、スポーツナビ(yahoo.pl)の出馬表・馬ページ・結果で作る。SOURCE=yahoo か SOURCE=keibalab で決め打ちできる
-#   スポーツナビでは馬ページを1頭ずつ取るので、1回の実行で取るのは YBUDGET 秒(既定300)まで。取り切れなかったレースは次の実行に回す
+# 取得元: JRA公式(jra.pl)が主。出馬表・オッズ・結果が一番早く出る(2026-10-23 ユーザー指示)。JRAにつながらなければスポーツナビ(yahoo.pl)
+#   SOURCE=jra・SOURCE=yahoo・SOURCE=keibalab で決め打ちできる。JRAで結果が見つからないレースはスポーツナビの結果を使う
+#   JRA・スポーツナビでは馬ページを1頭ずつ取るので、1回の実行で取るのは YBUDGET 秒(既定300)まで。取り切れなかったレースは次の実行に回す
 # 出力: <出力フォルダー>/manifest.tsv に「何をdbに書くか」を1行ずつ出す(定期実行のClaudeがこれを見て書き込む)
 #   race   <doc_id> <file>  … races/<doc_id> を set(新規または作り直し)
 #   update <doc_id> <file>  … races/<doc_id> を update(★・結果・振り返りを足す)
@@ -20,8 +21,8 @@ UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Ge
 get() { curl -sSL -A "$UA" -H "Accept-Language: ja" -o "$2" "https://www.keibalab.jp/db/race/$1"; sleep 1.5; }
 SOURCE="${SOURCE:-}"
 if [ -z "$SOURCE" ]; then
-  SOURCE=keibalab
-  curl -sS -m 20 -o /dev/null -A "$UA" https://www.keibalab.jp/ 2>/dev/null || { sleep 10; curl -sS -m 20 -o /dev/null -A "$UA" https://www.keibalab.jp/ 2>/dev/null; } || SOURCE=yahoo
+  SOURCE=jra
+  curl -sS -m 20 -o /dev/null -A "$UA" https://www.jra.go.jp/ 2>/dev/null || { sleep 10; curl -sS -m 20 -o /dev/null -A "$UA" https://www.jra.go.jp/ 2>/dev/null; } || SOURCE=yahoo
 fi
 echo "取得元: $SOURCE"
 YBUDGET="${YBUDGET:-300}"; YSTART=$SECONDS; HC="$OUT/hc"; mkdir -p "$HC"
@@ -49,6 +50,35 @@ ybuild() {
   perl "$HERE/yahoo.pl" raw "$OUT/tmp/yd_$ID.html" "$HC" "$ID" "$DBFILE" > "$OUT/tmp/yr_$ID.json" || return $?
   perl "$HERE/race_json.pl" "$OUT/tmp/yr_$ID.json" "$ID" > "$OUT/tmp/r_$ID.json"
 }
+# JRA公式: ページは cname を POST して取る(Shift_JISのまま保存)。cname は一覧ページのリンクから拾う
+jget() { curl -sSL -m 30 -A "$UA" -o "$3" -d "cname=$2" "https://www.jra.go.jp/JRADB/$1"; sleep 0.5; }
+# 一覧(出馬表 D・結果 S・オッズ O)から、日付 $D・場 $V・レース $R のページを $3 に取る。見つからなければ 1
+#   トップ(1回の実行で1度だけ取る) → その日・その場のレース一覧 → レースのページ
+jpage() {
+  local kind="$1" R="$2" out="$3" top lst page acc
+  case "$kind" in
+    D) acc=accessD.html; top=pw01dli00/F3; lst="pw01drl00$V\\d{8}$D/.."; page="pw01dde01$V\\d{8}$R$D/..";;
+    S) acc=accessS.html; top=pw01sli00/AF; lst="pw01srl10$V\\d{8}$D/.."; page="pw01sde10$V\\d{8}$R$D/..";;
+    O) acc=accessO.html; top=pw15oli00/6D; lst="pw15orl00$V\\d{8}$D/.."; page="pw151ou[A-Z0-9]*$V\\d{8}$R${D}Z/..";;
+  esac
+  local tf="$OUT/tmp/j${kind}_top.html" lf="$OUT/tmp/j${kind}_$D$V.html" c
+  [ -s "$tf" ] || jget "$acc" "$top" "$tf"
+  if [ ! -s "$lf" ]; then c=$(perl "$HERE/jra.pl" link "$tf" "$lst") || { : > "$lf"; return 1; }; jget "$acc" "$c" "$lf"; fi
+  [ -s "$lf" ] || return 1
+  c=$(perl "$HERE/jra.pl" link "$lf" "$page") || return 1
+  jget "$acc" "$c" "$out"; [ -s "$out" ]
+}
+# JRAの出馬表と馬ページから $OUT/tmp/r_$ID.json を作る(終了コードは ybuild と同じ)。当日・前日は単勝・複勝オッズのページも取る($OUT/tmp/jo_$ID.html)
+jbuild() {
+  jpage D "$R" "$OUT/tmp/jd_$ID.html" || return 2
+  [ "$off" -le 1 ] && jpage O "$R" "$OUT/tmp/jo_$ID.html"
+  if [ $((SECONDS - YSTART)) -lt "$YBUDGET" ]; then
+    perl "$HERE/jra.pl" need "$OUT/tmp/jd_$ID.html" "$DBFILE" | while IFS=$'\t' read -r hid cn; do [ -s "$HC/$hid.html" ] || printf '%s %s\n' "$hid" "$cn"; done |
+      xargs -r -P 3 -L 1 sh -c 'curl -sSL -m 30 -A "$1" -o "$2/$3.html" "https://www.jra.go.jp/JRADB/accessU.html?CNAME=$4"; sleep 0.3' _ "$UA" "$HC"
+  fi
+  perl "$HERE/jra.pl" raw "$OUT/tmp/jd_$ID.html" "$HC" "$ID" "$DBFILE" "$OUT/tmp/jo_$ID.html" > "$OUT/tmp/yr_$ID.json" || return $?
+  perl "$HERE/race_json.pl" "$OUT/tmp/yr_$ID.json" "$ID" > "$OUT/tmp/r_$ID.json"
+}
 NOW=$(TZ=JST-9 date +%Y%m%d%H%M)
 declare -A PLACE=( [04]=新潟 [05]=東京 [08]=京都 [06]=中山 [09]=阪神 [07]=中京 [01]=札幌 [02]=函館 [03]=福島 [10]=小倉 )
 [ -f "$LOGR" ] || echo "raceId,date,place,no,name,grade,star,starProb,honmei,honmeiRank,winner,winnerPop,winnerPredRank,hits3" > "$LOGR"
@@ -66,7 +96,7 @@ if [ -n "$DBDIR" ]; then
       binmode STDOUT, ":utf8"; print "$x->{date} $x->{place} " . ($x->{no} // "") . "\t$f\n" }')
 fi
 docid_of() { perl -MJSON::PP -0777 -ne 'my $d = JSON::PP->new->utf8->decode($_); print $d->{id} // ""' "$1"; }
-field_of() { [ -f "$1" ] || return 0; perl -MJSON::PP -0777 -ne 'my $d = JSON::PP->new->utf8->decode($_); $d = $d->{data} if ref $d->{data} eq "HASH"; print $d->{'"$2"'} // ""' "$1"; }
+field_of() { [ -f "$1" ] || return 0; perl -MJSON::PP -0777 -ne 'binmode STDOUT, ":utf8"; my $d = JSON::PP->new->utf8->decode($_); $d = $d->{data} if ref $d->{data} eq "HASH"; print $d->{'"$2"'} // ""' "$1"; }
 
 # 出馬表が出ていれば先の日も入れる(木曜に日曜・祝日月曜の登録が出る)。R1が無い日は1回の取得で飛ばすので軽い
 for off in -1 $(seq 0 "${AHEAD:-6}"); do
@@ -80,7 +110,8 @@ for off in -1 $(seq 0 "${AHEAD:-6}"); do
       # 発走時刻を過ぎて15分たっていれば、結果を取りにいく
       TIME=""; [ -n "$DBFILE" ] && TIME=$(field_of "$DBFILE" time)
       if [ -z "$DBFILE" ] || [ "$off" -ge 0 ]; then
-        if [ "$SOURCE" = yahoo ]; then ybuild; RC=$?
+        if [ "$SOURCE" = jra ]; then jbuild; RC=$?
+        elif [ "$SOURCE" = yahoo ]; then ybuild; RC=$?
         else
           get "$ID/umabashira.html" "$OUT/tmp/u_$ID.html"
           perl "$HERE/race_json.pl" "$OUT/tmp/u_$ID.html" "$ID" > "$OUT/tmp/r_$ID.json"; RC=$?
@@ -96,8 +127,11 @@ for off in -1 $(seq 0 "${AHEAD:-6}"); do
         # その日の同じ場・同じ馬場で終わったレースから、当日のトラックバイアスを推定する(根拠が足りなければ空)
         SRC="$OUT/tmp/r_$ID.json"; [ $RC -ne 0 ] && SRC="$DBFILE"
         DAYB=""; [ -n "$SRC" ] && DAYB=$(perl "$HERE/bias.pl" "$BIASF" "$DISO" "${PLACE[$V]}" "$(field_of "$SRC" surface)")
-        # 当日と前日は、スポーツナビの単勝・複勝オッズ(1日の予算の複勝の買い方が使う)。fukuAt は取った時刻
-        FUKU=""; if [ "$off" -le 1 ]; then ykai "$DISO" "$V"; if [ -n "$YK" ]; then yget "race/odds/tfw/$YK$R" "$OUT/tmp/tfw_$ID.html"; FUKU=$(perl "$HERE/yahoo.pl" fuku "$OUT/tmp/tfw_$ID.html" 2>/dev/null); fi; fi
+        # 当日と前日は、単勝・複勝オッズ(1日の予算の複勝の買い方が使う)。JRA公式(jbuild が取ったページ)が無ければスポーツナビ。fukuAt は取った時刻
+        FUKU=""; if [ "$off" -le 1 ]; then
+          if [ "$SOURCE" = jra ]; then [ -s "$OUT/tmp/jo_$ID.html" ] || jpage O "$R" "$OUT/tmp/jo_$ID.html"; FUKU=$(perl "$HERE/jra.pl" fuku "$OUT/tmp/jo_$ID.html" 2>/dev/null); fi
+          if [ -z "$FUKU" ]; then ykai "$DISO" "$V"; if [ -n "$YK" ]; then yget "race/odds/tfw/$YK$R" "$OUT/tmp/tfw_$ID.html"; FUKU=$(perl "$HERE/yahoo.pl" fuku "$OUT/tmp/tfw_$ID.html" 2>/dev/null); fi; fi
+        fi
         FUKUAT=$(TZ=JST-9 date +%Y-%m-%dT%H:%M:00+09:00)
         if [ $RC -eq 0 ] && { [ -z "$DBFILE" ] || [ "$(docid_of "$DBFILE")" = "k$ID" ]; }; then
           ST=$(perl "$HERE/star.pl" "$OUT/tmp/r_$ID.json" "$MODEL")
@@ -115,7 +149,8 @@ for off in -1 $(seq 0 "${AHEAD:-6}"); do
         continue
       fi
       # 終わったレース: 結果を取り、予想(dbのデータ。無ければ作り直したもの)と比べる
-      if [ "$SOURCE" = yahoo ]; then
+      if [ "$SOURCE" = jra ] && jpage S "$R" "$OUT/tmp/jres_$ID.html" && perl "$HERE/jra.pl" result "$OUT/tmp/jres_$ID.html" > "$OUT/tmp/res_$ID.json"; then :
+      elif [ "$SOURCE" != keibalab ]; then
         ykai "$DISO" "$V"; [ -z "$YK" ] && continue
         yget "race/result/$YK$R" "$OUT/tmp/res_$ID.html"
         perl "$HERE/yahoo.pl" result "$OUT/tmp/res_$ID.html" > "$OUT/tmp/res_$ID.json" || continue

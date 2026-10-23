@@ -1,6 +1,7 @@
 # 競馬ラボの馬柱ページ1つから、シミュレーター用のレースデータ(JSON)を作る。能力値はデータから自動で計算する
 # 使い方: perl race_json.pl <umabashira.html> <競馬ラボのレースID> > out.json
 #   keibalab.jp に接続できないときは、スポーツナビから作った素データ(yahoo.pl raw の出力、拡張子 .json)を馬柱の代わりに渡せる
+#   JRA公式から作った素データ(jra.pl raw の出力、src が jra)も同じ形で渡せる
 # 重賞(G1・G2・G3・J重賞)は Claude が判断材料を見て能力値を付けるので、ここでは作らない(終了コード 3)
 # 出走馬が出ていないページは終了コード 2
 use utf8; use strict; use warnings;
@@ -11,6 +12,7 @@ my ($file, $kid) = @ARGV;
 open my $fh, '<:utf8', $file or die "cannot open $file";
 local $/; my $h = <$fh>;
 my $RAW = $file =~ /\.json$/ ? JSON::PP->new->decode($h) : undef;
+my $SRCN = $RAW && ($RAW->{src} // "") eq "jra" ? "JRA公式" : "スポーツナビ";
 
 sub txt { my $t = shift // ''; $t =~ s/<[^>]*>//g; $t =~ s/&nbsp;/ /g; $t =~ s/\s+/ /g; $t =~ s/^ | $//g; $t }
 sub sect { my $n = shift; return $1 if $h =~ /<!-- \Q$n\E -->(.*?)<!-- /s; '' }
@@ -216,7 +218,7 @@ for my $i (0 .. $n - 1) {
   if (!$sadj && $wruns <= 2 && $surf eq '芝' && $dist >= 2200 && $cls =~ /以上|上/ && grep { ($STYPE{$_} // '') eq '欧州' } $sire, $dsire) {
     $heavy = clamp($heavy + 1, -2, 2); $enote = (($STYPE{$sire} // '') eq '欧州' ? "父${sire}" : "母父${dsire}") . 'が欧州型(古馬の芝長距離の道悪 +1)' }
   my $od =($odds[$i] // '') =~ /^([\d.]+)/ ? $1 + 0 : undef;
-  my @notes = (($RAW ? "近走の指数(スポーツナビの着差から) " : "Ω指数 ") . (($omega[$i] // '') =~ /^\d+$/ ? $omega[$i] : 'なし'));
+  my @notes = (($RAW ? "近走の指数(" . $SRCN . "の着差から) " : "Ω指数 ") . (($omega[$i] // '') =~ /^\d+$/ ? $omega[$i] : 'なし'));
   push @notes, "前走 $z->[0]{race} $z->[0]{rank}着" if @$z && $z->[0]{rank};
   # 3連勝以上(近5走で前走から続く1着の数)。能力値は変えず、シミュレーターの1番人気の不安材料と★の判定に使う(コタの動画、未検証)
   { my $w = 0; for (@$z) { last unless ($_->{rank} // 0) == 1; $w++ } push @notes, "${w}連勝中" if $w >= 3 }
@@ -451,9 +453,9 @@ my $nowj = do { my @t = gmtime(time + 9 * 3600); sprintf('%04d-%02d-%02dT%02d:%0
 my %doc = (id => "k$kid", name => $rname, grade => '', date => $date, place => $place, no => $no + 0, time => $time,
   surface => $surf, dist => $dist + 0, dir => $dir, courseNote => ($straight ? '直線' : ''), cond => $cond,
   stage => ((grep { defined $_->{umaban} } @horses) ? '枠順確定' : '出走確定'), chaos => $chaos,
-  weather => '', going => (defined $baba ? {'良' => 0, '稍重' => 1, '重' => 2, '不良' => 3}->{$baba} : undef),
-  updatedAt => $nowj, source => ($RAW ? 'スポーツナビ(能力値は自動計算)' : '競馬ラボ(能力値は自動計算)'),
-  memo => ($RAW ? '全レース自動追加。競馬ラボに接続できなかったため、スポーツナビの出馬表と近走から計算(Ω指数の代わりに近走の着差、騎手のコース連対率なし)' : '全レース自動追加。能力値はΩ指数・距離/コース成績・前走・騎手のコース連対率から自動で計算'),
+  weather => ($RAW ? $RAW->{weather} // '' : ''), going => (defined $baba ? {'良' => 0, '稍重' => 1, '重' => 2, '不良' => 3}->{$baba} : undef),
+  updatedAt => $nowj, source => ($RAW ? "$SRCN(能力値は自動計算)" : '競馬ラボ(能力値は自動計算)'),
+  memo => ($RAW ? "全レース自動追加。${SRCN}の出馬表と近走から計算(Ω指数の代わりに近走の着差、騎手のコース連対率なし)" : '全レース自動追加。能力値はΩ指数・距離/コース成績・前走・騎手のコース連対率から自動で計算'),
   auto => JSON::PP::true, keibalabId => "$kid", horses => \@horses);
 # スポーツナビの素データは残しておき、次の実行では馬ページを取り直さずに使う(yahoo.pl raw の「前回のdbのデータ」)
 $doc{yahooRaw} = $RAW if $RAW;
