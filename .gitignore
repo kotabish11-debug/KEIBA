@@ -3,3 +3,8 @@
 
 # Claude Codeの一時ファイル
 .claude/scheduled_tasks.lock
+自動実行/PC収集/.lock
+
+# YouTubeの文字起こし(著作物なのでコミットしない。要約は 馬情報/ の資料に書く)
+自動実行/YouTube/未処理/
+自動実行/YouTube/処理済み/

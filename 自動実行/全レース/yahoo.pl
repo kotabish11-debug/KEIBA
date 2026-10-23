@@ -101,7 +101,7 @@ if ($cmd eq 'raw') {
     }
     $x{rdist} = %rd ? \%rd : {}; $x{rcourse} = %rc ? \%rc : {};
     my @z = grep { $_->{rank} =~ /^\d+$/ } @runs[0 .. ($#runs < 4 ? $#runs : 4)];
-    $x{zen} = [map { my $p = $_; +{ (map { $_ => $p->{$_} } qw(heads last first umaban surf dist place margin race)), rank => $p->{rank} + 0 } } @z];
+    $x{zen} = [map { my $p = $_; +{ (map { $_ => $p->{$_} } qw(heads last first umaban surf dist place margin race pop)), rank => $p->{rank} + 0 } } @z];
     if (@runs && $runs[0]{days}) { my $wk = int($runs[0]{days} / 7) - 1; $x{intv} = $wk >= 1 ? "中${wk}週" : '連闘' }
     # 近走の指数(Ω指数の代わり): 勝ち馬との差が小さいほど高く、重賞は格の分を足す。地方・海外は割り引く
     my @perf = map { 80 - 8 * clamp($_->{msigned}, -0.5, 2.5) + $_->{gbonus} - ($_->{jra} ? 0 : 6) } grep { defined $_->{msigned} } @runs[0 .. ($#runs < 4 ? $#runs : 4)];
@@ -129,7 +129,8 @@ sub past_runs {
     my @num = map { txt($_) } ($r =~ /hr-table__data--number[^"]*">(.*?)<\/td>/sg);
     my ($tm2) = $r =~ /hr-table__data--time">(.*?)<\/td>/s; my ($ms) = ($tm2 // '') =~ /\(\s*([+\-]?[\d.]+)\s*\)/;
     my ($ord) = $r =~ /hr-table__data--order">([\d\-]+)/; my @pos = grep { /^\d+$/ } split /-/, ($ord // '');
-    push @runs, { rank => $num[0] // '', umaban => ($num[1] // '') =~ /^(\d+)$/ ? $1 + 0 : undef, heads => $hd + 0, surf => $ps, dist => $pdist + 0,
+    my ($ppop) = $r =~ /hr-table__data--odds">\s*(\d+)/;   # 人気(その下の括弧がオッズ)
+    push @runs, { rank => $num[0] // '', umaban => ($num[1] // '') =~ /^(\d+)$/ ? $1 + 0 : undef, heads => $hd + 0, surf => $ps, dist => $pdist + 0, pop => (defined $ppop ? $ppop + 0 : undef),
       place => $pl, jra => $JRA{$pl} ? 1 : 0, race => $race // '', days => $tday - $pday,
       msigned => (defined $ms ? $ms + 0 : undef), margin => (defined $ms ? abs($ms) + 0 : undef),
       gbonus => ($g ? { 1 => 8, 2 => 6, 3 => 4 }->{$g} // 0 : 0), first => (@pos ? $pos[0] + 0 : undef), last => (@pos ? $pos[-1] + 0 : undef) };

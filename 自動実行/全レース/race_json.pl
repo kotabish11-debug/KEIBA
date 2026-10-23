@@ -99,9 +99,10 @@ for my $k (1 .. 5) {
     my ($pass) = $cell =~ /class="zensou std11"><span[^>]*>\s*(.*?)\s*<\/span>/s;
     my ($rn) = $cell =~ /class="zensoname">\s*([^<]*?)\s*</s;
     my ($ppace) = $cell =~ /<span class="bold (?:red|green|blue)">\s*([HMS])\s*</;   # 前走のペース(H・M・S)
+    my ($ppop) = $cell =~ /<span>\s*(\d+)人\s*<\/span>/;   # 前走の人気
     my %circ; my @cc = split //, '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱'; $circ{$cc[$_]} = $_ + 1 for 0 .. $#cc;
     my @pos = map { $circ{$_} } grep { exists $circ{$_} } split //, ($pass // '');
-    push @{$zen[$i]}, { rank => $rank, heads => $hd, last => $pos[-1], first => $pos[0], umaban => $pu, surf => $psurf, dist => $pdist, going => $pgoing, place => $pplace, margin => $pmargin, pace => $ppace, race => $rn // '' };
+    push @{$zen[$i]}, { rank => $rank, heads => $hd, last => $pos[-1], first => $pos[0], umaban => $pu, surf => $psurf, dist => $pdist, going => $pgoing, place => $pplace, margin => $pmargin, pace => $ppace, pop => $ppop, race => $rn // '' };
   }
 }
 # 父(馬名等の欄で、馬名の後に母・父が並ぶ)
@@ -167,6 +168,8 @@ for my $i (0 .. $n - 1) {
   my $iv = $intv[$i] // ''; my ($wk) = $iv =~ /中(\d+)週/;
   $choshi -= 6 if (defined $wk && $wk >= 20) || $iv =~ /ヶ月|半年|年/;
   $choshi -= 3 if defined $wk && $wk >= 26;   # 半年以上の休み明けは、人気でも勝ち切れないことが多い
+  # 中1週は疲れが残りやすく、中3〜5週が一番走る(バフェットの動画。2026年の平場で勝率が市場の 中1週0.89倍・中3〜5週1.06〜1.12倍、前半・後半とも同じ向き)
+  if (defined $wk) { $choshi -= 1 if $wk == 1; $choshi += 1 if $wk >= 3 && $wk <= 5 }
   my ($jr, $jn) = ($jc[$i] // '') =~ /([\d.]+)%\s*\[(\d+)\]/;
   my $kishu = (defined $jn && $jn >= 5) ? clamp(int(58 + 0.8 * $jr + 0.5), 55, 92) : 66;
   # 脚質: 前走の4角位置の平均。無ければ脚質マーク
@@ -226,7 +229,15 @@ for my $i (0 .. $n - 1) {
   # 善戦型: 近5走(着順のある4走以上)で勝ちがなく2・3着が3回以上。勝率は市場どおりだが3着以内率が高く、単勝より2・3着付けやワイド・3連複の軸向き(コタの単勝の動画。2026年の平場の1〜5番人気で複勝率52%、全体44%)
   { my @k = grep { $_->{rank} } @$z; my $p23 = grep { $_->{rank} == 2 || $_->{rank} == 3 } @k;
     push @notes, "善戦型(近" . scalar(@k) . "走で2・3着${p23}回・勝ちなし)" if @k >= 4 && $p23 >= 3 && !grep { $_->{rank} == 1 } @k }
+  # 人気になったときに勝ち切れない材料(飯野先生の「飛ぶ1番人気」。2026年の平場で1番人気の勝率が市場の 前走1着×3勝クラス以上0.82倍・前走2着0.3秒以上負け0.86倍・初距離0.92倍、前半・後半とも1倍未満。
+  # 3着以内率は平常どおりなので能力値・★は変えず、simulator の favRisks の表示だけに使う)
+  if (@$z && $z->[0]{rank}) {
+    push @notes, '前走1着で3勝クラス以上' if $z->[0]{rank} == 1 && $cls =~ /3勝|オープン/;
+    push @notes, "前走2着でも${zm}秒差" if $z->[0]{rank} == 2 && defined $zm && $zm >= 0.3;
+    push @notes, '初距離(近走にこの距離なし)' if $dist && !grep { ($_->{dist} // 0) == $dist } @$z;
+  }
   push @notes, "休み明け($iv)" if (defined $wk && $wk >= 20) || $iv =~ /ヶ月|半年|年/;
+  push @notes, $wk == 1 ? '中1週(-1)' : "中${wk}週(+1)" if defined $wk && ($wk == 1 || ($wk >= 3 && $wk <= 5));
   push @notes, "騎手のこのコース連対率 $jr%" if defined $jn && $jn >= 5;
   push @notes, @jw;
   push @notes, $snote if $snote;
@@ -282,6 +293,9 @@ for my $i (0 .. $n - 1) {
     if (($p->{first} // 0) == 1 && $r <= 3) { $adj -= 2; push @why, '前走逃げて好走'; $hh{_prevLead} = 1 }
     # 前走2着: 「次こそ勝つ」と人気しすぎる(コタの単勝の動画で1〜5番人気の単勝回収率72%が最低。2026年の平場1,593レースでも勝率が市場の0.88倍で、前半・後半とも同じ)
     if ($r == 2) { $adj -= 2; push @why, '前走2着(人気しすぎ)' }
+    # 前走の人気と着順: 1番人気で4着以下に負けた馬は次も人気が残って勝てない、2・3番人気で4着以下の馬は人気を落として巻き返す
+    # (飯野先生の「5番人気以内で凡走した次走を狙え」を検証。2026年の平場で勝率が市場の 前走1番人気4着以下0.78倍(前半0.82・後半0.74、3着以内率も低い)・前走2〜3番人気4着以下1.18倍(1.19・1.16))
+    if (defined $p->{pop} && $r >= 4) { if ($p->{pop} == 1) { $adj -= 2; push @why, '前走1番人気で4着以下(人気が残りやすい)' } elsif ($p->{pop} <= 3) { $adj += 2; push @why, "前走$p->{pop}番人気で${r}着(人気を落として巻き返し)" } }
     # 前走の道悪で好走 → 今回良馬場 / 前走の道悪で凡走 → 今回良馬場
     if (defined $baba && $baba eq '良' && ($p->{going} // '') =~ /^(重|不)$/) {
       if ($r <= 3) { $adj -= 3; push @why, '前走は道悪で好走・今回は良' } elsif ($r >= 6) { $adj += 2; push @why, '前走は道悪で凡走・今回は良' }

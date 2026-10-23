@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch",
+      "WebSearch",
+      "ArtifactData",
+      "RemoteTrigger",
+      "Bash(curl:*)",
+      "Bash(bash 自動実行/*)",
+      "Bash(perl:*)",
+      "Bash(git pull:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)"
+    ]
+  }
+}
