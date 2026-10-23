@@ -1627,20 +1627,24 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   const NEWS_TIMES = ["07:00", "12:00", "19:00"];   // ニュース収集のルーティン(自動実行/ニュース/手順.md)
   const UPDATE_SCHEDULE = [
     { label: "全レース・★・オッズ・馬場・結果の振り返り(手動更新の依頼もここで処理)", days: ALL_DAYS, times: ["07:50", "09:50", "11:50", "13:50", "15:50", "17:50", "19:50", "21:50"] },
+    { label: "レース日のオッズ・馬体重・結果(1時間おき)", raceDays: true, times: ["08:50", "10:50", "12:50", "14:50", "16:50", "18:50", "20:50"] },
     { label: "JRAの新情報(特別登録・出走馬・結果)・判断材料・能力値", days: ALL_DAYS, times: ["08:20", "18:20"] },
     { label: "出走馬・判断材料・能力値", days: [5], times: ["12:20"] },
     { label: "結果・翌週の特別登録・判断材料", days: [0], times: ["19:20"] },
     { label: "競馬ニュースの収集", days: ALL_DAYS, times: NEWS_TIMES }
   ];
   const JST = 9 * 3600 * 1000;
+  // レースのある日(dbに届いたレースの日付。祝日の開催も入る)。この日は全レースの更新が1時間おきになる
+  function raceDaySet() { return new Set(Object.values(races).map(r => r && r.iso).filter(Boolean)); }
   // 次の更新予定を返す。同じ時刻に重なったものはまとめる
   function nextUpdate(now) {
     const nowJ = new Date(now.getTime() + JST);   // UTCの各値が日本時間を表す
+    const rd = raceDaySet();
     for (let dd = 0; dd <= 7; dd++) {
       const day = new Date(Date.UTC(nowJ.getUTCFullYear(), nowJ.getUTCMonth(), nowJ.getUTCDate() + dd));
       const hits = [];
       for (const s of UPDATE_SCHEDULE) {
-        if (!s.days.includes(day.getUTCDay())) continue;
+        if (s.raceDays ? !rd.has(day.toISOString().slice(0, 10)) : !s.days.includes(day.getUTCDay())) continue;
         for (const t of s.times) {
           const [h, m] = t.split(":").map(Number);
           const at = Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), h, m) - JST;
@@ -1666,7 +1670,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     if (!n) { el.textContent = ""; return; }
     el.innerHTML = `次回更新 <b>${esc(fmtJst(n.at))}</b>・${esc(n.labels.join("/"))}`;
     el.title = "定期更新の予定(日本時間)\n" + UPDATE_SCHEDULE.map(s =>
-      `${s.days.map(d => WEEK[d]).join("")} ${s.times.join("・")}: ${s.label}`).join("\n") +
+      `${s.raceDays ? "レース日" : s.days.map(d => WEEK[d]).join("")} ${s.times.join("・")}: ${s.label}`).join("\n") +
       "\n※更新には数分〜十数分かかります。発表前の情報は入りません";
   }
   // 馬券の発売時間(ネット投票・JRAダイレクト 2026年の規定。https://www.jra.go.jp/dento/direct/instructions/hatsubai.html)
