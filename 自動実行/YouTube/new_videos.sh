@@ -24,7 +24,8 @@ grep -v '^#' channels.tsv | while IFS=$'\t' read -r handle name doc; do
     title=$(perl -ne 'if (/"videoDetails":\{.*?"title":"((?:[^"\\]|\\.)*)"/) { print $1; exit }' "$T/p.json")
     author=$(perl -ne 'if (/"videoDetails":\{.*?"author":"((?:[^"\\]|\\.)*)"/) { print $1; exit }' "$T/p.json")
     [ "$author" != "$name" ] && [ -n "$author" ] && case "$name" in *"$author"*) ;; *) continue;; esac
-    url=$(grep -o '"captionTracks":\[{"baseUrl":"[^"]*"' "$T/p.json" | head -1 | sed 's/.*"baseUrl":"//;s/"$//;s/\\u0026/\&/g')
+    # 字幕は日本語のトラックを選ぶ(先頭が英語の自動生成のチャンネルがある)
+    url=$(perl -e 'local $/; my $t = <>; my ($ct) = $t =~ /"captionTracks":\[(.*?)\],"audioTracks"/s or exit; my @u; while ($ct =~ /\{"baseUrl":"([^"]*)".*?"languageCode":"([\w-]+)"/g) { push @u, [$1, $2] } my ($j) = grep { $_->[1] =~ /^ja/ } @u; exit unless $j; my $x = $j->[0]; $x =~ s/\\u0026/&/g; print $x' "$T/p.json")
     echo "$id" >> seen.txt
     [ -z "$url" ] && continue   # メンバー限定・字幕なし
     curl -s -m 60 -A "$IUA" "$url&fmt=json3" -o "$T/j.json"
