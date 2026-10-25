@@ -24,7 +24,7 @@ yget() {
 }
 
 cat "$OUT"/*/ワイド.jsonl 2>/dev/null | grep -o '"id":"[0-9]*"' | grep -o '[0-9]\{12\}' | cat - "$NONE" | sort -u > "$W/have.txt"
-cat "$OUT"/*/レース.jsonl 2>/dev/null | grep -o '^{[^{]*"id":"[0-9]*"' | grep -o '"id":"[0-9]*"' | grep -o '[0-9]\{12\}' | sort -u | comm -23 - "$W/have.txt" | sort -r > "$W/todo.txt"
+cat "$OUT"/*/レース.jsonl 2>/dev/null | grep -o '"id":"[0-9]\{12\}"' | grep -o '[0-9]\{12\}' | sort -u | comm -23 - "$W/have.txt" | sort -r > "$W/todo.txt"
 echo "ワイド: $(wc -l < "$W/todo.txt") レースを取得"
 n=0
 while read -r ID; do
