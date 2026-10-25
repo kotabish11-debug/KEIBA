@@ -31,10 +31,12 @@ try {
 
   # 学習データ(週1回。Claudeを使わずスクリプトだけで集める)
   & "C:\Program Files\Git\bin\bash.exe" (Join-Path $here "backfill_weekly.sh") 2>&1 | Out-File -Append -Encoding utf8 $log
-  git add "馬情報/過去レースデータ" "自動実行/PC収集/backfill_last.txt" "馬情報/複勝の買い方_成績.md" 2>&1 | Out-Null
+  # 馬DB(全部の競走馬・種牡馬・繁殖牝馬。毎回25分まで。2026-10-26〜。Claudeを使わずスクリプトだけで集める)
+  & "C:\Program Files\Git\bin\bash.exe" (Join-Path $root "自動実行\馬DB\update.sh") 2>&1 | Out-File -Append -Encoding utf8 $log
+  git add "馬情報/過去レースデータ" "自動実行/PC収集/backfill_last.txt" "馬情報/複勝の買い方_成績.md" "馬情報/馬DB" 2>&1 | Out-Null
   git diff --cached --quiet
   if ($LASTEXITCODE -ne 0) {
-    git commit -q -m ("PC収集 {0} 学習データ" -f (Get-Date -Format "yyyy-MM-dd HH:mm")) 2>&1 | Out-File -Append -Encoding utf8 $log
+    git commit -q -m ("PC収集 {0} 学習データ・馬DB" -f (Get-Date -Format "yyyy-MM-dd HH:mm")) 2>&1 | Out-File -Append -Encoding utf8 $log
     git pull --rebase --autostash -q origin main 2>&1 | Out-File -Append -Encoding utf8 $log
     if ($LASTEXITCODE -ne 0) { git rebase --abort 2>&1 | Out-Null; Log "pull失敗" } else { git push -q origin main 2>&1 | Out-File -Append -Encoding utf8 $log }
   }
