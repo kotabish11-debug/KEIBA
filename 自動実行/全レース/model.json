@@ -1,15 +1,15 @@
 {
-   "fittedRaces" : 98,
-   "note" : "結果 98レースから重みを調整",
+   "fittedRaces" : 102,
+   "note" : "結果 102レースから重みを調整",
    "starTop3" : 0.8,
    "stats" : {
       "honmeiTop3" : 64,
       "honmeiWin" : 31,
-      "races" : 99,
-      "starRaces" : 5,
+      "races" : 103,
+      "starRaces" : 6,
       "starTop3" : null
    },
-   "updatedAt" : "2026-10-25T14:52:00+09:00",
+   "updatedAt" : "2026-10-25T15:51:00+09:00",
    "weights" : {
       "choshi" : 0.245,
       "course" : 0.055,
