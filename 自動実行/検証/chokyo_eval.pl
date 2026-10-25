@@ -46,7 +46,7 @@ for my $vid (sort keys %V) { my @hs = @{$V{$vid}}; my $year = $hs[0]{year} or ne
   my %fk = map { $_->{k} => $_->{yen} } @{($PAY{$best->{id}} || {})->{'複勝'} || []};
   my @mine;
   for my $x (@hs) { my ($bi, $bs) = (-1, 0.5); for my $i (0 .. $n - 1) { my $v = sim($x->{name}, $run[$i]{name}); ($bi, $bs) = ($i, $v) if $v > $bs } next if $bi < 0 || $used{"$best->{id}:$bi"}++;
-    my $h = $run[$bi]; my $sak = $x->{course} =~ /坂路/ ? 1 : 0;
+    my $h = $run[$bi]; print STDERR "照合 $x->{name} → $h->{name} (", sprintf('%.2f', $bs), ")\n" if $ENV{DEBUG} && $bs < 0.8; my $sak = $x->{course} =~ /坂路/ ? 1 : 0;
     push @mine, { %$x, race_id => $best->{id}, rdate => $best->{date}, grade => $best->{grade}, rname => $best->{name}, horse => $h->{name}, rank => $h->{rank}, odds => $h->{odds}, pop => $h->{pop},
       q => $q[$bi], p3 => $p3[$bi], sak => $sak, fuku => ($h->{rank} <= 3 ? ($fk{$h->{umaban}} // 0) : 0) } }
   # 同じレースの中で比べる: 1F(坂路とそれ以外で分けて)の速さの順位、全体時計の順位
@@ -77,7 +77,10 @@ print "== 市場の3着以内率に上乗せする効果(b > 0 = 条件に当て
 for my $def (['1Fが同じレースで速い方(0〜1、0が一番速い→ 1-順位)', sub { defined $_[0]{r1F} ? 1 - $_[0]{r1F} : undef }],
              ['4F(全体)が同じレースで速い方', sub { defined $_[0]{r4F} ? 1 - $_[0]{r4F} : undef }],
              ['併せ馬(1)/単走(0)', sub { $_[0]{pos} ? ($_[0]{pos} ne '単走' ? 1 : 0) : undef }],
-             ['坂路(1)/それ以外(0)', sub { $_[0]{sak} }]) {
+             ['坂路(1)/それ以外(0)', sub { $_[0]{sak} }],
+             ['加速ラップ(終い1Fがその前の2Fの平均より速い=1)', sub { ($_[0]{'3F'} // '') ne '' && ($_[0]{'1F'} // '') ne '' ? ($_[0]{'1F'} < ($_[0]{'3F'} - $_[0]{'1F'}) / 2 ? 1 : 0) : undef }],
+             ['ウッドで1Fが11.7以上(1)/ウッドでそれより速い(0)', sub { !$_[0]{sak} && ($_[0]{'1F'} // '') ne '' ? ($_[0]{'1F'} >= 11.7 ? 1 : 0) : undef }],
+             ['坂路で1Fが12.0〜12.4(1)/坂路でそれ以外(0)', sub { $_[0]{sak} && ($_[0]{'1F'} // '') ne '' ? ($_[0]{'1F'} >= 12.0 && $_[0]{'1F'} < 12.5 ? 1 : 0) : undef }]) {
   my ($name, $fx) = @$def;
   printf "  %-40s %s\n", $name, join('  ', map { my $g = $_; my @xs = map { my $v = $fx->($_); defined $v ? [($_->{rank} <= 3 ? 1 : 0), min(0.97, max(0.01, $_->{p3})), $v] : () } grep { $g eq '全体' || ($g eq '前半') == ($_->{rdate} lt $split) } @rows;
     @xs >= 30 ? do { my ($b, $se) = fitb(\@xs); sprintf "%s %4d頭 b=%+.2f z=%+.1f", $g, scalar @xs, $b, $b / $se } : () } qw(全体 前半 後半)) }
