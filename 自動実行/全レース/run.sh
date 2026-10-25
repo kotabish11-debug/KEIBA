@@ -143,6 +143,8 @@ for off in -1 $(seq 0 "${AHEAD:-6}"); do
           if [ -z "$WIDE" ]; then ykai "$DISO" "$V"; if [ -n "$YK" ]; then yget "race/odds/wide/$YK$R?ninki=0" "$OUT/tmp/yw_$ID.html"; WIDE=$(perl "$HERE/yahoo.pl" wide "$OUT/tmp/yw_$ID.html" 2>/dev/null); fi; fi
         fi
         FUKUAT=$(TZ=JST-9 date +%Y-%m-%dT%H:%M:00+09:00)
+        # オッズの動きを残す(2026-10-26〜)。db は毎回上書きされるので、取った回ごとの単勝・複勝 {馬番: [単勝, 複勝下限, 上限]} を足していく。発走前の売れ方が当たりに効くかを後で確かめるため
+        [ -n "$FUKU" ] && mkdir -p "$ROOT/馬情報/オッズの推移" && printf '{"id":"%s","at":"%s","fuku":%s}\n' "$ID" "$FUKUAT" "$FUKU" >> "$ROOT/馬情報/オッズの推移/$DISO.jsonl"
         if [ $RC -eq 0 ] && { [ -z "$DBFILE" ] || [ "$(docid_of "$DBFILE")" = "k$ID" ]; }; then
           ST=$(perl "$HERE/star.pl" "$OUT/tmp/r_$ID.json" "$MODEL")
           perl -Mutf8 -MJSON::PP -0777 -e 'my $d = JSON::PP->new->utf8->decode(do { local $/; open my $h, "<:raw", $ARGV[0]; <$h> }); my $s = JSON::PP->new->utf8->decode($ARGV[1]);
