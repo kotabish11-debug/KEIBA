@@ -21,6 +21,9 @@ try {
   Log "start"
   git pull --rebase --autostash -q origin main 2>&1 | Out-File -Append -Encoding utf8 $log
 
+  # 2005年以降の全レースのデータ集め(2026-10-26〜)。裏で動かし、動いていれば history_bg.sh が何もせず終わる。GitHubには送らない
+  Start-Process -FilePath "C:\Program Files\Git\bin\bash.exe" -ArgumentList '"自動実行/全レース/history_bg.sh"' -WorkingDirectory $root -WindowStyle Hidden
+
   $prompt = Get-Content -Raw -Encoding UTF8 (Join-Path $here "prompt.md")
   $tools = "Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch,ToolSearch,ArtifactData"
   $prompt | claude -p --model sonnet --allowedTools $tools --permission-mode acceptEdits 2>&1 | Out-File -Append -Encoding utf8 $log
