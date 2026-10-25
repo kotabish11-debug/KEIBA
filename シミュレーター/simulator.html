@@ -519,6 +519,16 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
 .rn-list a { color: var(--ink); font-weight: 700; text-decoration: none; }
 .rn-list a:hover { color: var(--gold); text-decoration: underline; }
 .rn-list .s { flex-basis: 100%; font-size: 12.5px; color: var(--muted); }
+/* ---------- 一獲千金 ---------- */
+.jp-title { font-family: var(--f-display); font-size: 22px; letter-spacing: .04em; color: var(--gold); }
+.jp-story { margin: 0; font-size: 14.5px; line-height: 1.85; }
+.jp-factors { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
+.jp-factors div { background: var(--inset); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font-size: 13px; line-height: 1.6; }
+.jp-factors b { display: block; color: var(--gold); font-size: 12px; letter-spacing: .06em; }
+.jp-group { display: flex; flex-direction: column; gap: 6px; }
+.jp-gh { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.jp-gh .num { margin-left: auto; color: var(--gold); font-weight: 700; font-size: 16px; }
+.jp-gh .why { flex-basis: 100%; font-size: 13px; color: var(--muted); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
@@ -540,6 +550,8 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   <nav class="tabs" role="tablist" aria-label="ページ">
     <button type="button" class="tab" role="tab" id="tabRace" data-view="race" aria-controls="viewRace" aria-selected="true">レース予想</button>
     <button type="button" class="tab" role="tab" id="tabDay" data-view="day" aria-controls="viewDay" aria-selected="false">1日の予算</button>
+    <button type="button" class="tab" role="tab" id="tabBank" data-view="bank" aria-controls="viewBank" aria-selected="false">資金</button>
+    <button type="button" class="tab" role="tab" id="tabJp" data-view="jackpot" aria-controls="viewJp" aria-selected="false">一獲千金</button>
     <button type="button" class="tab" role="tab" id="tabNews" data-view="news" aria-controls="viewNews" aria-selected="false">ニュース</button>
   </nav>
 
@@ -572,14 +584,15 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
 
   <!-- 結論・買い目 -->
   <section class="win" aria-labelledby="h-bets">
-    <div class="win-h"><h2 id="h-bets">買い目</h2><span class="sub">過去の払戻で確かめた「人気馬の複勝」だけを出します。条件に合わなければ見送りです</span></div>
+    <div class="win-h"><h2 id="h-bets">買い目</h2><span class="sub">過去の払戻で確かめた「人気馬の複勝」(買い方を「複勝+ワイド」にすると人気馬どうしのワイドも)だけを出します。条件に合わなければ見送りです</span></div>
     <div class="win-b">
       <div class="controls">
         <div class="field"><label for="budget">予算(円)</label><input type="number" id="budget" min="100" step="100" value="3000"></div>
         <div class="field"><span>買い方</span>
           <div class="seg" role="group" aria-label="買い方" id="styleSeg">
-            <button type="button" data-rule="std" title="複勝オッズ3倍未満。過去の回収率104%・的中率67%">標準(推奨)</button>
-            <button type="button" data-rule="hit" title="複勝オッズ2倍未満。過去の回収率101%・的中率72%">的中重視</button>
+            <button type="button" data-rule="std" title="複勝オッズ1.2〜3倍未満(新馬・障害・重賞は買わない)。過去の回収率123%・的中率60%">標準(推奨)</button>
+            <button type="button" data-rule="hit" title="複勝オッズ1.2〜2倍未満(新馬・障害・重賞は買わない)。過去の回収率111%・的中率64%">的中重視</button>
+            <button type="button" data-rule="wide" title="標準の複勝 + 人気馬どうしのワイド(ワイドオッズ3倍未満・期待値1.1以上)。過去の回収率115%・的中率54%。複勝だけより回収率は低いが、何か当たる日が多い">複勝+ワイド</button>
           </div>
         </div>
       </div>
@@ -588,15 +601,16 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       <div class="stats" id="stats"></div>
       <div class="tbl-wrap">
         <table class="t" id="betTable">
-          <thead><tr><th>券種</th><th>馬</th><th class="r">金額</th><th class="r">3着以内率</th><th class="r">複勝オッズ</th><th class="r">期待値</th><th class="r" title="購入の直前に複勝オッズ(下限)がこれ未満なら、期待値が1を切るので買わない">買ってよいオッズ</th><th class="r">当たれば</th></tr></thead>
+          <thead><tr><th>券種</th><th>馬</th><th class="r">金額</th><th class="r" title="複勝は3着以内、ワイドは2頭とも3着以内に入る確率">的中率</th><th class="r">オッズ</th><th class="r">期待値</th><th class="r" title="購入の直前に複勝オッズ(下限)がこれ未満なら、期待値が基準を切るので買わない">買ってよいオッズ</th><th class="r">当たれば</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
       <div class="legend">
         <span>3着以内率: 単勝オッズから計算(Harville式)</span>
-        <span>期待値: 3着以内率 × 複勝オッズの下限。1.0以上で、複勝オッズが3倍未満(的中重視は2倍未満)の馬だけ買う</span>
+        <span>期待値: 3着以内率 × 複勝オッズの下限。1.0以上で、複勝オッズが1.2〜3倍未満(的中重視は1.2〜2倍未満)の馬だけ買う。新馬・障害・重賞は買わない</span>
         <span>買ってよいオッズ: 複勝オッズの下限がこれ以上なら買う。購入の直前に確かめる</span>
-        <span>過去1,868レースの本物の払戻で、この買い方は回収率104%・的中率67%(期間で分けると95%と115%で、ほぼトントン)。以前の券種を選ぶ買い方は34〜56%だった</span>
+        <span>複勝+ワイド: ワイドは2頭とも3着以内の確率(単勝オッズから計算) × ワイドオッズの下限が1.1以上で、ワイドオッズが3倍未満の組だけ買う。ワイドだけの過去の回収率は115%(4〜7月110%・8〜10月123%)</span>
+        <span>過去1,868レースの本物の払戻で、この買い方は回収率123%・的中率60%(期間で分けると105%と143%)。以前の券種を選ぶ買い方は34〜56%だった</span>
       </div>
       <details class="kinds">
         <summary>券種の説明</summary>
@@ -616,8 +630,8 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
         </div>
         <ul class="kinds-notes">
           <li>払戻率: 売上のうち、当たった人に戻る割合(JRAの規定)。残りは控除される。払戻率が高い単勝・複勝ほど、長く買ったときに損をしにくい</li>
-          <li>買い目は複勝だけです。2026年4〜10月の平場1,868レースを本物の払戻で確かめると、単勝・馬連・馬単・3連複は、シミュレーターの期待値で選んでも回収率が70%台以下でした(出典: 馬情報/的中率を上げるための検証.md の11)</li>
-          <li>人気馬の複勝は、単勝オッズから見た3着以内率に比べて複勝オッズが高めにつくことがあり、そこだけ回収率が100%前後になりました</li>
+          <li>買い目は複勝が基本です(買い方を「複勝+ワイド」にすると人気馬どうしのワイドも出します)。2026年4〜10月の平場1,868レースを本物の払戻で確かめると、単勝・馬連・馬単・3連複は、シミュレーターの期待値で選んでも回収率が70%台以下でした(出典: 馬情報/的中率を上げるための検証.md の11)</li>
+          <li>人気馬の複勝は、単勝オッズから見た3着以内率に比べて複勝オッズが高めにつくことがあり、そこだけ回収率が100%を超えました。ただし複勝1.2倍未満の大本命・新馬・障害は、どの条件でも回収率が90%前後以下だったので買いません</li>
           <li>「オッズの断層」は、単勝を人気順に並べて隣同士が2倍以上離れる所から、レースの型を示します(1番人気が抜けて強い=見送り向き/抜けているが不安=逆転候補が狙い目/上位2〜3頭が抜けている=その中で比べる/断層なしの混戦=見送り向き)</li>
           <li>ほかに枠連(同じ枠の馬をまとめて買う馬連)と応援馬券(同じ馬の単勝と複勝のセット)もあるが、このシミュレーターでは使わない</li>
         </ul>
@@ -715,7 +729,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       <li>実際の単勝オッズが出ると、能力値の勝率とオッズから見た勝率を「オッズの比重」で混ぜ、各馬の地力をその勝率に合うよう調整してから走らせます(Benterの方式)。オッズの比重の初期値90%と、オッズを補正せずそのまま使う(1/オッズ)ことは、2026年4〜10月の平場1,871レースで当たり方を比べて決めました(出典: 馬情報/的中率を上げるための検証.md)。</li>
       <li>JRAの重賞(G1・G2・G3)は、出走登録されるとClaudeが能力値を付けてデータを作り、レース一覧に自動で加わります。</li>
       <li>枠順・単勝オッズ・馬場・天気・馬体重・出走取消は、Claudeが定期的にスポーツナビ競馬・JRA・tenki.jpから取得し、自動で反映します。右上の表示が緑なら受信中です。</li>
-      <li>買い目は、過去の本物の払戻で確かめた「人気馬の複勝」だけです。単勝・複勝オッズは定期実行がスポーツナビから取ります。</li>
+      <li>買い目は、過去の本物の払戻で確かめた「人気馬の複勝」(と、買い方で選んだときの人気馬どうしのワイド)だけです。単勝・複勝・ワイドのオッズは定期実行がJRA公式から取ります(つながらないときはスポーツナビ)。</li>
       <li>馬カードの血統・戦績は「馬情報」フォルダーの出走馬データ(スポーツナビ競馬)から、騎手カードの成績は2026年のJRA重賞の全着順(JRA公式)から作っています。騎手の成績は重賞だけの集計です。</li>
       <li>能力の数値とランク(S〜G)は、このデータを元にClaudeが付けた評価です。予想は的中を保証しません。</li>
       <li>東京・京都・新潟の重賞以外のレースも、すべて自動で入ります。これらの能力値は、競馬ラボのΩ指数・距離とコースの成績・前走・騎手のコース連対率から自動で計算しています(重賞はClaudeが判断材料を見て付けます)。</li>
@@ -736,8 +750,9 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
           <div class="field"><label for="dayBudget">1日の予算(円)</label><input type="number" id="dayBudget" min="100" step="100" value="10000"></div>
           <div class="field"><span>買い方</span>
             <div class="seg" role="group" aria-label="買い方" id="dayStyleSeg">
-              <button type="button" data-rule="std" title="複勝オッズ3倍未満。過去の回収率104%・的中率67%">標準(推奨)</button>
-              <button type="button" data-rule="hit" title="複勝オッズ2倍未満。過去の回収率101%・的中率72%">的中重視</button>
+              <button type="button" data-rule="std" title="複勝オッズ1.2〜3倍未満(新馬・障害・重賞は買わない)。過去の回収率123%・的中率60%">標準(推奨)</button>
+              <button type="button" data-rule="hit" title="複勝オッズ1.2〜2倍未満(新馬・障害・重賞は買わない)。過去の回収率111%・的中率64%">的中重視</button>
+              <button type="button" data-rule="wide" title="標準の複勝 + 人気馬どうしのワイド(ワイドオッズ3倍未満・期待値1.1以上)。過去の回収率115%・的中率54%。複勝だけより回収率は低いが、何か当たる日が多い">複勝+ワイド</button>
             </div>
           </div>
           <label class="day-check"><input type="checkbox" id="dayPast">発売が終わったレースも含める</label>
@@ -756,15 +771,102 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       <b>1日の予算の決め方</b>
       <ul>
         <li>買うのは人気馬の複勝だけです。各馬の3着以内率を単勝オッズから出し(Harville式)、「3着以内率 × 複勝オッズの下限」が1以上の複勝を選びます。単勝・複勝オッズは定期実行がスポーツナビから取った同じ時刻のものです。</li>
-        <li>2026年4〜10月の平場1,868レースを本物の払戻で確かめた結果です。以前の買い方(推定オッズの期待値で全券種に配分)は回収率がバランス56%・高配当34%でした。この買い方は回収率104%・的中率67%で、1日で何か当たる日は98%でした。</li>
-        <li>期間で分けると4〜7月95%・8〜10月115%で、確実に儲かるとまでは言えません(ほぼトントン)。成績はデータが増えるたびに確かめ直します。</li>
-        <li>予算は買う複勝に同額ずつ配分します(ケリー基準の比例配分より同額の方が回収率が高かった)。1点は予算の30%まで、条件に合う複勝が少ない日は予算を残します。</li>
+        <li>2026年4〜10月の平場1,868レースを本物の払戻で確かめた結果です。以前の買い方(推定オッズの期待値で全券種に配分)は回収率がバランス56%・高配当34%でした。この買い方(複勝オッズ1.2〜3倍未満・新馬と障害を除く)は回収率123%・的中率60%で、1日で何か当たる日は89%でした。</li>
+        <li>期間で分けると4〜7月105%・8〜10月143%です。条件を絞る前(4〜7月95%・8〜10月115%)より良くなりましたが、点数が177点と少なく、確実に儲かるとまでは言えません。成績はデータが増えるたびに確かめ直します。</li>
+        <li>買い方を「複勝+ワイド」にすると、人気馬どうしのワイド(2頭とも3着以内の確率 × ワイドオッズの下限が1.1以上・ワイドオッズ3倍未満)も買います。過去の回収率は複勝と合わせて115%(4〜7月107%・8〜10月125%)で、標準の123%より低く、最大の落ち込みも約2.9万円と大きい代わりに、1日で何か当たる日が89%から93%に増えます。</li>
+        <li>予算は買う馬券に同額ずつ配分します(ケリー基準の比例配分より同額の方が回収率が高かった)。1点は予算の30%まで、条件に合う複勝が少ない日は予算を残します。</li>
+        <li>競馬用に分けた資金から買う金額を決めるときは「資金」のページを使います。</li>
         <li>オッズは購入までに動きます。購入の直前に、複勝オッズの下限が表の「買ってよいオッズ」以上か確かめてください。下回っていたら買わないでください。予想は的中を保証しません。</li>
       </ul>
     </section>
   </div>
 
+  <!-- 資金: 競馬用に分けたお金の残高から、その日に何を・いくら買うかを出す(資金計画は 馬情報/資金計画_5000円から.md) -->
+  <div class="view" id="viewBank" role="tabpanel" aria-labelledby="tabBank" hidden>
+    <section class="win" aria-labelledby="h-bank">
+      <div class="win-h"><h2 id="h-bank">資金</h2><span class="sub">競馬用に分けたお金の今の残高を入れると、1点を資金の5%にして、その日に買う馬券と金額を出します</span></div>
+      <div class="win-b">
+        <div class="pick-row"><span class="pick-k">日付</span><div class="chips" id="bankDate" role="group" aria-label="日付"></div></div>
+        <div class="controls">
+          <div class="field"><label for="bankInput">資金の残高(円)</label><input type="number" id="bankInput" min="0" step="100" placeholder="例: 5000"></div>
+          <div class="field"><span>買い方</span><span class="small">標準(人気馬の複勝)だけ</span></div>
+          <label class="day-check"><input type="checkbox" id="bankPast">発売が終わったレースも含める</label>
+        </div>
+        <p class="verdict" id="bankVerdict">資金の残高を入れてください。</p>
+        <div class="stats" id="bankStats"></div>
+        <div class="venues" id="bankVenues"></div>
+      </div>
+    </section>
+    <div id="bankList" class="view"></div>
+    <section class="win" aria-labelledby="h-bskip" id="bankSkipBox" hidden>
+      <div class="win-h"><h2 id="h-bskip">見送るレース</h2><span class="sub">条件に合う複勝がない、または複勝オッズがまだ出ていないレース。押すとレース予想を開きます</span></div>
+      <div class="win-b skips" id="bankSkips"></div>
+    </section>
+    <section class="win" aria-labelledby="h-plan">
+      <div class="win-h"><h2 id="h-plan">資金の増やし方</h2><span class="sub">過去の払戻を並べ直して、5000円から30年分を1000回ずつ試した見通し</span></div>
+      <div class="win-b">
+        <div class="tbl-wrap">
+          <table class="t">
+            <thead><tr><th>本当の回収率</th><th class="r">50万円まで</th><th class="r">500万円まで</th><th class="r">3000万円まで</th><th class="r">3億円</th><th class="r">破産</th></tr></thead>
+            <tbody>
+              <tr><td>123%(過去どおり)</td><td class="r num">1.7年</td><td class="r num">2.7年</td><td class="r num">6年</td><td class="r">届かない</td><td class="r num">0%</td></tr>
+              <tr><td>110%</td><td class="r num">5.9年</td><td class="r num">8.7年</td><td class="r num">17年</td><td class="r">届かない</td><td class="r num">3%</td></tr>
+              <tr><td>105%</td><td class="r num">約20年</td><td class="r">届かないことが多い</td><td class="r">届かない</td><td class="r">届かない</td><td class="r num">40%</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <ul class="kinds-notes">
+          <li>3億円に届かないのは、1点に賭けられる額に上限があるため。平場の複勝の売上は1レース千万円前後で、1点10万円を超えると自分の馬券で複勝オッズが下がる。1点10万円だと年に賭けられるのは約3200万円で、回収率123%でも利益は年に約730万円</li>
+          <li>過去の123%は約半年・177点の成績で、4〜7月は105%だった。本当の回収率はもっと低いかもしれない</li>
+          <li>1点を資金の5%にしたのは、回収率が110%に下がっても破産しにくいから(10%だと破産が28%に増える)。5000円では最低の100円が資金の2%に当たる</li>
+        </ul>
+      </div>
+    </section>
+    <section class="foot">
+      <b>資金の使い方</b>
+      <ul>
+        <li>毎日、払戻を足した残高を入れ直してください。1点 = 資金の5%(100円単位で切り捨て・最低100円)、1日に使うのは資金の半分まで。候補が多い日は期待値の高い順に絞ります。</li>
+        <li>買うのは標準の人気馬の複勝だけです(複勝オッズ1.2〜3倍未満・期待値1.0以上。新馬・障害・重賞は買わない)。購入は発走の10〜15分前に、複勝オッズの下限が「買ってよいオッズ」以上のときだけ。</li>
+        <li>見直す条件: 記録が300点ほどたまって回収率が100%を切っていたら買い方を見直す。資金が半分を切ったら、いったん買うのを止める。2026-10-24から5000円をこのやり方で回した記録は、週1回 馬情報/資金の記録_5000円から.md に作り直されます。</li>
+        <li>払戻はふつう一時所得で、外れ馬券の購入額は引けません。年の儲けが50万円を超えそうなら、税務署か税理士に相談してください。即PATの購入履歴はすべて保存してください。</li>
+      </ul>
+    </section>
+  </div>
+
   <!-- ニュース: Claudeが毎日 朝・昼・晩に集めた競馬ニュースの要約 -->
+  <!-- 一獲千金: 重賞(G1〜G3)だけ。すべての要素を入れたシミュレーションと、Claudeが判断材料を読んで決めた渾身の 3連単・3連複・馬単・馬連 -->
+  <div class="view" id="viewJp" role="tabpanel" aria-labelledby="tabJp" hidden>
+    <section class="win" aria-labelledby="h-jp">
+      <div class="win-h"><h2 id="h-jp">一獲千金</h2><span class="sub">重賞だけ。人気と実力に、展開・コース・枠・馬場・血統・騎手・過去10年の傾向・ニュースまで入れて、3連単・3連複・馬単・馬連の渾身の買い目を出します</span></div>
+      <div class="win-b">
+        <div class="pick-row"><span class="pick-k">重賞</span><div class="chips" id="jpRaces" role="group" aria-label="重賞"></div></div>
+        <div class="controls">
+          <div class="field"><label for="jpBudget">予算(円)</label><input type="number" id="jpBudget" min="400" step="100" value="3000"></div>
+          <button type="button" class="btn" id="jpOpen">このレースの予想を開く</button>
+        </div>
+        <p class="verdict" id="jpVerdict">計算の準備をしています…</p>
+        <div class="notice"><b>夢を買う馬券です。</b>3連単・3連複・馬単・馬連は払戻率が72.5〜77.5%と低く、2026年4〜10月の平場1,868レースではシミュレーターの期待値で選んでも回収率70%台以下でした。重賞は検証していません。長く続けると損をしやすいので、「1日の予算」「資金」とは別の、なくなってもよいお金で買ってください。</div>
+      </div>
+    </section>
+    <section class="win" aria-labelledby="h-jpc">
+      <div class="win-h"><h2 id="h-jpc">Claudeの渾身の買い目</h2><span class="sub" id="jpClaudeSub"></span></div>
+      <div class="win-b" id="jpClaude"></div>
+    </section>
+    <section class="win" aria-labelledby="h-jps">
+      <div class="win-h"><h2 id="h-jps">シミュレーターの一獲千金</h2><span class="sub">計算だけで選んだ候補。Claudeの買い目とどちらか一方を買う想定で、同じ予算で出します</span></div>
+      <div class="win-b" id="jpSim"></div>
+    </section>
+    <section class="foot">
+      <b>一獲千金の選び方</b>
+      <ul>
+        <li>シミュレーターは、能力値(実績・距離・コース・調子・騎手)に、展開(ペース × 脚質)・コースの有利不利・枠・馬場と道悪の血統・当日のトラックバイアスを入れて5万回走らせます。単勝オッズ(人気)の比重は最大70%までに下げ、人気だけでは見えない差が買い目に出るようにしています(レース予想のページは90%)。</li>
+        <li>シミュレーターの候補は、推定オッズが 3連単80倍・3連複20倍・馬単15倍・馬連10倍 以上の組から、「シミュレーターの的中率 × 推定オッズ」が高く、的中率もある程度ある組(期待値 × √的中率 の順)を選びます。予算は 3連単30%・3連複30%・馬単20%・馬連20% に分け、券種の中は同額です。</li>
+        <li>Claudeの渾身の買い目は、Claudeが判断材料(競馬ラボの過去10年・コースの傾向・追い切り・騎手の得意不得手・血統・ニュース・各予想動画の見方)と当日の馬場・馬体重を読んで、軸と相手を決めたものです。出走馬・枠順・オッズが変わると書き直します。</li>
+        <li>推定オッズは単勝オッズからの計算(Harville式 × 払戻率 × 人気薄の補正)で、本物の3連単・馬単などのオッズではありません。購入の前に本物のオッズを確かめてください。予想は的中を保証しません。</li>
+      </ul>
+    </section>
+  </div>
+
   <div class="view" id="viewNews" role="tabpanel" aria-labelledby="tabNews" hidden>
     <section class="win" aria-labelledby="h-news">
       <div class="win-h"><h2 id="h-news">競馬ニュース</h2><span class="sub">毎日 朝7時・昼12時・夜19時にClaudeが集めて要約します。見出しを押すと元の記事が開きます</span></div>
@@ -874,7 +976,8 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   // 芝スタートのダート(外枠ほど芝を長く走れる → 外枠有利)
   const TURF_START_DIRT = ["東京ダ1600", "中山ダ1200", "阪神ダ1400", "阪神ダ2000", "京都ダ1400", "中京ダ1400", "新潟ダ1200", "福島ダ1150"];
   // 1コーナーまでが短い(内枠の逃げ・先行が有利) / 同じ場でスタートが約200m後ろで長い(差しが届きやすい)
-  const FIRST_CORNER_SHORT = ["中山芝1800", "中京芝2000", "中京ダ1800", "京都ダ1800", "阪神ダ1800", "東京芝2000"];
+  // 小倉・福島・函館・札幌の芝1800も1角まで短い(丞相の各場の動画。2026年の平場で4場とも先行の3着内率が平均の1.1〜1.7倍、福島・函館は内枠1.5倍)
+  const FIRST_CORNER_SHORT = ["中山芝1800", "中京芝2000", "中京ダ1800", "京都ダ1800", "阪神ダ1800", "東京芝2000", "小倉芝1800", "福島芝1800", "函館芝1800", "札幌芝1800"];
   const FIRST_CORNER_LONG = ["中山芝2000", "中京芝2200", "中京ダ1900", "京都ダ1900", "阪神ダ2000"];
   // コースごとの傾向が分かっているコース(draw: プラス=内枠有利、マイナス=外枠有利)。出典は 馬情報/競馬場の特徴_JRA10場.md
   const COURSE_PRESET = {
@@ -913,7 +1016,12 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     "京都ダ1400": { bias: { "逃げ": 0.5, "先行": 1, "差し": 0.5, "追込": -0.5 }, draw: -0.5 },     // 芝スタートで外枠
     "京都ダ1800": { bias: { "逃げ": 2.5, "先行": 1.5, "差し": -1, "追込": -2.5 }, draw: 0.3 },     // 1角まで約280m。内枠の先行がすんなり行けると有利
     "京都ダ1900": { bias: { "逃げ": -0.5, "先行": 0, "差し": 1, "追込": 1 }, draw: 0 },            // 1800と逆で差し・追込が届く
-    "中京ダ1800": { bias: { "逃げ": 2, "先行": 2, "差し": -0.5, "追込": -2 }, draw: 0.5 }         // スタート直後の上り坂でペースが落ち、1角まで短い。外枠は内に入れず外を回され、ダートでは珍しく内枠有利
+    "中京ダ1800": { bias: { "逃げ": 2, "先行": 2, "差し": -0.5, "追込": -2 }, draw: 0.5 },         // スタート直後の上り坂でペースが落ち、1角まで短い。外枠は内に入れず外を回され、ダートでは珍しく内枠有利
+    // 以下はローカル場(丞相の札幌・函館・福島の動画と、2026年4〜10月の平場の3着内率が同じ向きのものだけ。数字は平均を1とした3着内率、各20〜50レース)
+    "札幌芝1200": { bias: { "逃げ": 1, "先行": 0.5, "差し": 0.5, "追込": -1.5 }, draw: -0.2 },  // 平坦でコーナーが緩く差しも届く(差し1.11・先行0.94)。外枠1.37・内枠0.73
+    "札幌ダ1700": { bias: { "逃げ": 1, "先行": 1, "差し": 0, "追込": -1.5 }, draw: -0.5 },     // 大回りで1700のうち最も差しが届く。外枠1.23・内枠0.66
+    "函館ダ1000": { bias: { "逃げ": 2.5, "先行": 2, "差し": -1.5, "追込": -2.5 }, draw: 0 },     // 直線が最短で前が止まらない(逃げ1.84・先行1.59・差し0.47)。枠の差は小さい
+    "福島芝1200": { bias: { "逃げ": 1.5, "先行": 1.5, "差し": 0, "追込": -2.5 }, draw: -0.2 }   // 芝が傷みやすく外の綺麗な所を通れる外枠(外1.24・内0.71)。前有利は他の小回りと同じ
   };
   function defaultBias(d) {
     const preset = /内回り/.test(d.courseNote || "") && /^京都芝1[46]00$/.test(`${d.place}${d.surface}${Number(d.dist)}`)
@@ -921,6 +1029,15 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     // 京都芝2000(内回り)は3勝クラス以上・重賞だと道中で息が入らず、前が残りにくい(秋華賞の過去10年は差し中心・馬番1〜4は不振。上昇・コタの動画、未検証)
     if (preset && `${d.place}${d.surface}${Number(d.dist)}` === "京都芝2000" && (d.grade || /[3３]勝|オープン/.test(d.cond || "")))
       return { bias: { "逃げ": 0.5, "先行": 1, "差し": 0.5, "追込": -1 }, draw: 0.3 };
+    // 東京ダ1400・1600はクラスが上がるほど差しが決まる(競馬の専門学校の東京ダ1400の動画。2026年4〜10月の平場で、
+    // 東京ダ1400の1勝クラス以上は 差し1.40倍(前半1.34・後半1.57)・先行0.62倍(0.71・0.35)、未勝利は 先行1.06・差し0.95 でぶれる。
+    // 東京ダ1600の1勝クラス以上は 差し1.28・先行0.87 と同じ向きだが前半後半でぶれるので控えめ。追込はどちらも届いていない)
+    if (preset && d.place === "東京" && d.surface === "ダ" && (Number(d.dist) === 1400 || Number(d.dist) === 1600)) {
+      const low = !d.grade && /未勝利|新馬/.test(d.cond || "");
+      if (Number(d.dist) === 1400) return low ? { bias: { "逃げ": 0.5, "先行": 0.5, "差し": 0.5, "追込": -0.5 }, draw: 0 }
+        : { bias: { "逃げ": -1, "先行": -0.5, "差し": 1.5, "追込": -0.5 }, draw: 0 };
+      if (!low) return { bias: { "逃げ": 0, "先行": 0.5, "差し": 1, "追込": -1.5 }, draw: preset.draw };
+    }
     if (preset) return { bias: Object.assign({}, preset.bias), draw: preset.draw };
     const small =["中山", "福島", "小倉", "函館", "札幌"].includes(d.place) || /内回り/.test(d.courseNote || "");
     if (d.surface === "障") return { bias: { "逃げ": 1, "先行": 1, "差し": 0, "追込": -1.5 }, draw: 0.3 };
@@ -2302,22 +2419,32 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     if (!rows && !kari && horses.length >= 5 && horses.every(h => Number(h.odds) >= 1)) {
       rows = horses.map(h => ({ name: h.name, u: Number(h.umaban) || 0, tan: Number(h.odds), lo: 0, hi: 0 }));
     }
-    const { all, picks } = rows ? fukuPick(rows, rule) : { all: [], picks: [] };
-    const list = picks.slice(0, units);
+    const raceSkip = fukuSkipRace(race.cond, race.course, race.grade);
+    const { all, picks } = rows && !raceSkip ? fukuPick(rows, rule) : { all: [], picks: [] };
+    // 複勝+ワイドの買い方: ワイドオッズは単勝・複勝と同じ回に定期実行が取ったもの(db の wide)
+    const wpicks = hasFuku && !raceSkip && FUKU_RULES[rule].wide ? widePick(rows, d.wide) : [];
+    const list = picks.concat(wpicks).slice(0, units);
+    const kinds = [...new Set(list.map(x => x.type || "複勝"))].join("と");
     const per = list.length ? Math.max(1, Math.floor(units / list.length)) : 0;
     const bets = list.map(x => Object.assign({}, x, { amount: per * 100 }));
     const cost = bets.reduce((a, b) => a + b.amount, 0);
 
     let v = `本命は<strong>${esc(horses[top[0]].name)}</strong>(勝率${pct(s.win[top[0]], 0)})、対抗は${esc(horses[top[1]].name)}(${pct(s.win[top[1]], 0)})。`;
     if (bets.length) {
-      v += `人気馬の複勝を<strong>${bets.length}点・合計${yen(cost)}</strong>買います。購入の直前に、複勝オッズの下限が表の「買ってよいオッズ」以上か確かめてください。`;
+      v += `人気馬の${kinds}を<strong>${bets.length}点・合計${yen(cost)}</strong>買います。購入の直前に、オッズの下限が表の「買ってよいオッズ」以上か確かめてください。`;
       const t = fukuAtText(at); if (t) v += `<span class="muted">(${esc(t)})</span>`;
+    } else if (raceSkip) {
+      v += race.grade
+        ? `<span class="skip">重賞は過去の検証(平場1,868レース)に入っていないため、買い目は出さず見送りを推奨します。</span>`
+        : `<span class="skip">新馬・障害のレースは、過去の払戻で人気馬の複勝の回収率が低かった(新馬79%・障害75%)ため、見送りを推奨します。</span>`;
     } else if (!rows) {
       v += `<span class="skip">単勝オッズがまだ出ていないため、買い目は出せません(見送り)。</span>オッズが出ると、条件に合う複勝がここに出ます。`;
     } else if (!hasFuku) {
       v += `<span class="skip">複勝オッズがまだ入っていません。</span>下の表の馬は、複勝オッズの下限が「買ってよいオッズ」以上なら買えます。それ以外は見送りです。`;
     } else {
-      v += `<span class="skip">条件に合う複勝(期待値${FUKU_EV_MIN.toFixed(1)}以上・複勝オッズ${FUKU_RULES[rule].omax}倍未満)がないため、このレースは見送りを推奨します。</span>`;
+      v += `<span class="skip">条件に合う複勝(期待値${FUKU_EV_MIN.toFixed(1)}以上・複勝オッズ${FUKU_OMIN}〜${FUKU_RULES[rule].omax}倍未満)` +
+        (FUKU_RULES[rule].wide ? `・ワイド(期待値${WIDE_EV_MIN.toFixed(1)}以上・ワイドオッズ${WIDE_OMAX}倍未満)` : "") + `がないため、このレースは見送りを推奨します。</span>` +
+        (FUKU_RULES[rule].wide && !d.wide ? `<span class="muted">(ワイドオッズがまだ入っていません)</span>` : "");
     }
     const hints = [];
     const gapHint = oddsGapHint(s);
@@ -2351,7 +2478,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       ["合計金額", yen(cost), ""],
       ["買う点数", bets.length + "点", ""],
       ["どれかが当たる確率", bets.length ? pct(1 - missAll, 0) : "－", ""],
-      ["過去の回収率", rule === "hit" ? "101%" : "104%", "good"]
+      ["過去の回収率", FUKU_RULES[rule].roi, "good"]
     ].map(([k, val, cls]) => `<div class="stat"><span class="k">${k}</span><span class="v ${cls}">${val}</span></div>`).join("");
     $("payBox").hidden = true;
 
@@ -2360,16 +2487,16 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     const chipOf = u => { const w = wakuOf(u, roster.length); return `<span class="chip w${w}" title="${w ? w + "枠" : "馬番未確定"}">${w ? u : "－"}</span>`; };
     const rowsHtml = shown.map(b => `
       <tr class="${bets.length ? "" : "ref"}">
-        <td><span class="type-pill" title="${BET_DESC["複勝"]}">複勝</span></td>
-        <td><span class="combo">${chipOf(b.u)}${nameBtn(b.name)}</span></td>
+        <td><span class="type-pill" title="${BET_DESC[b.type || "複勝"]}">${b.type || "複勝"}</span></td>
+        <td><span class="combo">${chipOf(b.u)}${nameBtn(b.name)}${b.u2 ? `<span class="sep">-</span>${chipOf(b.u2)}${nameBtn(b.name2)}` : ""}</span></td>
         <td class="r num">${b.amount ? yen(b.amount) : "－"}</td>
         <td class="r num">${pct(b.p)}</td>
         <td class="r num">${b.lo ? `${b.lo.toFixed(1)}〜${b.hi.toFixed(1)}倍` : "－"}</td>
-        <td class="r num ${b.ev >= FUKU_EV_MIN ? "ev-good" : "ev-bad"}">${b.lo ? b.ev.toFixed(2) : "－"}</td>
+        <td class="r num ${b.ev >= (b.type === "ワイド" ? WIDE_EV_MIN : FUKU_EV_MIN) ? "ev-good" : "ev-bad"}">${b.lo ? b.ev.toFixed(2) : "－"}</td>
         <td class="r num">${b.need.toFixed(1)}倍以上</td>
         <td class="r num">${b.amount ? yen(Math.floor(b.amount * b.lo / 10) * 10) + "〜" : "－"}</td>
       </tr>`).join("");
-    $("betTable").tBodies[0].innerHTML = rowsHtml || `<tr><td colspan="8" class="muted">単勝オッズが出ると、ここに複勝の候補が出ます。</td></tr>`;
+    $("betTable").tBodies[0].innerHTML = rowsHtml || `<tr><td colspan="8" class="muted">${raceSkip ? (race.grade ? "重賞は検証外なので買いません。" : "新馬・障害のレースは買いません。") :"単勝オッズが出ると、ここに複勝の候補が出ます。"}</td></tr>`;
   }
 
   let timer = null;
@@ -2392,23 +2519,40 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   // ---------------- 1日の予算 ----------------
   // その日の全レースで「本物の複勝オッズで期待値が1以上の人気馬の複勝」だけを選び、1日の予算を同額ずつ配分する。
   // 過去1,868レース(2026年4〜10月)の本物の払戻で、推定オッズの期待値で全券種に配分していた以前の方法は回収率34〜56%、
-  // この方法は回収率104%・的中率67%だった(4〜7月95%・8〜10月115%。確実に儲かるとまでは言えない)。詳しくは 馬情報/的中率を上げるための検証.md の11
+  // この方法は回収率104%・的中率67%だった(4〜7月95%・8〜10月115%)。条件で分けると、複勝1.2倍未満の大本命・新馬・障害はどの期待値の帯でも
+  // 前半・後半とも回収率が90%前後以下だったので外した(回収率123%・4〜7月105%・8〜10月143%)。詳しくは 馬情報/的中率を上げるための検証.md の11・12
   const DAY_KEY = "keiba-day-v2";
   const DAY_CAP = 0.3;         // 1点に使う上限(予算に対する割合)
+  // 資金(競馬用に分けたお金)から買うとき。過去の払戻を並べ直したシミュレーション(自動実行/検証/bankroll_sim.pl)で、回収率が123%なら10〜15%でも破産しないが、
+  // 本当の回収率が110%なら10%で28%・105%なら5%で40%が破産した。回収率はまだ不確かなので5%にする(馬情報/資金計画_5000円から.md)
+  const BANK_FRAC = 0.05;      // 1点 = 資金のこの割合(100円単位で切り捨て・最低100円)
+  const BANK_DAY_MAX = 0.5;    // 1日に使うのは資金のこの割合まで
   const FUKU_EV_MIN = 1.0;     // 3着以内率 × 複勝オッズの下限 がこれ以上なら買う
-  // 複勝オッズ(下限)の上限。過去の成績: 3倍未満 → 389点・回収率104%・的中率67% / 2倍未満 → 334点・回収率101%・的中率72%
+  const FUKU_OMIN = 1.2;       // 複勝オッズの下限がこれ未満の大本命は買わない(過去の回収率91%)
+  // 複勝オッズ(下限)の上限。過去の成績(新馬・障害を除く): 1.2〜3倍未満 → 177点・回収率123%・的中率60% / 1.2〜2倍未満 → 134点・回収率111%・的中率64%
   const FUKU_RULES = {
-    std: { label: "標準", omax: 3, note: "複勝オッズ3倍未満。過去の回収率104%・的中率67%" },
-    hit: { label: "的中重視", omax: 2, note: "複勝オッズ2倍未満。過去の回収率101%・的中率72%" }
+    std: { label: "標準", omax: 3, roi: "123%", note: "複勝オッズ1.2〜3倍未満。過去の回収率123%・的中率60%" },
+    hit: { label: "的中重視", omax: 2, roi: "111%", note: "複勝オッズ1.2〜2倍未満。過去の回収率111%・的中率64%" },
+    // 標準の複勝に、人気馬どうしのワイドを足す。ワイドだけなら178点・回収率115%(4〜7月110%・8〜10月123%)・的中率47%。
+    // 複勝と合わせた1日の予算は回収率115%(107%・125%)で、複勝だけ(123%)より低く落ち込みも大きい(約2.9万円)が、何か当たる日は89% → 93%
+    wide: { label: "複勝+ワイド", omax: 3, wide: true, roi: "115%", note: "標準の複勝 + ワイドオッズ3倍未満・期待値1.1以上のワイド。過去の回収率115%・的中率54%" }
   };
+  const WIDE_EV_MIN = 1.1;     // 2頭とも3着以内の確率 × ワイドオッズの下限 がこれ以上なら買う(1.0以上だと回収率91%)
+  const WIDE_OMAX = 3;         // ワイドオッズ(下限)がこれ未満の組だけ(人気薄が絡む組は、期待値が高く出るほど回収率が下がった)
+  // 新馬・障害のレースは買わない(過去の回収率 新馬79%・障害75%)。cond はレースの条件(「2歳新馬 馬齢」など)、surface は「芝」「ダ」「障」
+  // 重賞(G1〜G3)も買わない: 過去の検証(平場1,868レース)に入っておらず、確かめていない所で資金を使わない(2026-10-24)
+  function fukuSkipRace(cond, surface, grade) {
+    if (grade) return "重賞は検証外で買わない";
+    return /新馬|障害/.test(cond || "") || /^障/.test(surface || "") ? "新馬・障害は買わない" : "";
+  }
   let view = "race";
-  const day = { iso: null, budget: 10000, rule: "std", past: false };
+  const day = { iso: null, budget: 10000, bank: 0, rule: "std", past: false };
   let dayTimer = null;
   try { Object.assign(day, JSON.parse(localStorage.getItem(DAY_KEY) || "{}")); } catch (e) {}
   if (!FUKU_RULES[day.rule]) day.rule = "std";
   day.iso = null;
   function daySave() {
-    try { localStorage.setItem(DAY_KEY, JSON.stringify({ budget: day.budget, rule: day.rule, past: day.past })); } catch (e) {}
+    try { localStorage.setItem(DAY_KEY, JSON.stringify({ budget: day.budget, bank: day.bank, rule: day.rule, past: day.past })); } catch (e) {}
   }
 
   // 単勝オッズ → 各馬の3着以内率(Harville式: 2着・3着も残りの馬の単勝の支持率どおりに選ぶ)。検証(eval_harville.pl)と同じ計算
@@ -2424,8 +2568,10 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     return p3;
   }
   // 1レース分の複勝の候補。単勝・複勝オッズは定期実行がスポーツナビから取った同じ時刻のもの(db の fuku: {馬番: [単勝, 複勝の下限, 上限]})
-  function fukuRace(r) {
+  function fukuRace(r, ruleKey) {
     const d = docs[r.id];
+    const skip = d ? fukuSkipRace(d.cond, d.surface, d.grade) : "";
+    if (skip) return { why: skip };
     if (!d || !d.fuku || typeof d.fuku !== "object") return { why: "複勝オッズがまだない" };
     const list = (Array.isArray(d.horses) ? d.horses : []).filter(h => h && !h.scratched && Number(h.umaban) >= 1);
     const rows = list.map(h => {
@@ -2433,16 +2579,49 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       return { name: String(h.name), u: Number(h.umaban), tan: Number(f[0]) >= 1 ? Number(f[0]) : 0, lo: Number(f[1]) || 0, hi: Number(f[2]) || 0 };
     });
     if (rows.length < 5 || rows.some(x => !(x.tan >= 1 && x.lo >= 1))) return { why: "オッズがそろっていない" };
-    const { picks } = fukuPick(rows, day.rule);
-    return picks.length ? { picks, at: d.fukuAt || "", total: list.length } : { why: `期待値${FUKU_EV_MIN.toFixed(1)}以上の複勝なし` };
+    const { picks } = fukuPick(rows, ruleKey);
+    const w = FUKU_RULES[ruleKey].wide;
+    const all = w ? picks.concat(widePick(rows, d.wide)) : picks;
+    return all.length ? { picks: all, at: d.fukuAt || "", total: list.length } : { why: w ? "条件に合う複勝・ワイドなし" : `期待値${FUKU_EV_MIN.toFixed(1)}以上の複勝なし` };
   }
   // 単勝・複勝オッズの行({tan, lo: 複勝の下限})に3着以内率・期待値・買ってよいオッズ(期待値が1になる複勝の下限)を付け、条件に合うものを選ぶ。
   // 1日の予算とレース予想で共通。lo が 0(複勝オッズがまだ無い)の行は選ばない
   function fukuPick(rows, ruleKey) {
     const p3 = harvilleTop3(rows.map(x => x.tan));
     const omax = (FUKU_RULES[ruleKey] || FUKU_RULES.std).omax;
-    const all = rows.map((x, i) => Object.assign(x, { p: p3[i], ev: p3[i] * x.lo, need: Math.ceil(10 / p3[i]) / 10 }));
-    return { all, picks: all.filter(x => x.lo >= 1 && x.ev >= FUKU_EV_MIN && x.lo < omax).sort((a, b) => b.ev - a.ev) };
+    const all = rows.map((x, i) => Object.assign(x, { p: p3[i], ev: p3[i] * x.lo, need: Math.max(FUKU_OMIN, Math.ceil(10 / p3[i]) / 10) }));
+    return { all, picks: all.filter(x => x.lo >= FUKU_OMIN && x.ev >= FUKU_EV_MIN && x.lo < omax).sort((a, b) => b.ev - a.ev) };
+  }
+  // 単勝オッズ → 2頭とも3着以内に入る確率(ワイドの的中率)。検証(eval_wide.pl)と同じHarville式。キーは「小さい馬番-大きい馬番」
+  function harvillePairs(rows) {
+    const n = rows.length, inv = rows.map(x => 1 / x.tan), s = inv.reduce((a, b) => a + b, 0), q = inv.map(v => v / s);
+    const P = {}, key = (a, b) => `${Math.min(rows[a].u, rows[b].u)}-${Math.max(rows[a].u, rows[b].u)}`;
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+      if (j === i) continue;
+      const pij = q[i] * q[j] / (1 - q[i]);
+      for (let k = 0; k < n; k++) {
+        if (k === i || k === j) continue;
+        const p = pij * q[k] / (1 - q[i] - q[j]);
+        for (const [a, b] of [[i, j], [i, k], [j, k]]) { const kk = key(a, b); P[kk] = (P[kk] || 0) + p; }
+      }
+    }
+    return P;
+  }
+  // 人気馬どうしのワイドの候補。rows は fukuPick と同じ行(単勝オッズ tan・馬番 u)、wide は定期実行が同じ回に取ったワイドオッズ(db の wide: {"1-2": [下限, 上限]})
+  function widePick(rows, wide) {
+    if (!wide || typeof wide !== "object") return [];
+    const P = harvillePairs(rows), by = {};
+    rows.forEach(x => { by[x.u] = x; });
+    const out = [];
+    for (const k of Object.keys(P)) {
+      const w = wide[k];
+      if (!Array.isArray(w)) continue;
+      const lo = Number(w[0]) || 0, hi = Number(w[1]) || 0, p = P[k], ev = p * lo;
+      if (!(lo >= 1 && lo < WIDE_OMAX && ev >= WIDE_EV_MIN)) continue;
+      const [a, b] = k.split("-").map(Number);
+      out.push({ type: "ワイド", u: a, u2: b, name: by[a].name, name2: by[b].name, p, lo, hi, ev, need: Math.ceil(WIDE_EV_MIN * 10 / p) / 10 });
+    }
+    return out.sort((x, y) => y.ev - x.ev);
   }
 
   function dayDates() {
@@ -2462,14 +2641,19 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     const dates = dayDates();
     const today = todayIso();
     if (!day.iso || !dates.includes(day.iso)) day.iso = dates.find(d => d >= today) || dates[dates.length - 1] || null;
-    $("dayDate").innerHTML = dates.map(d => `<button type="button" class="chip-btn${d < today ? " done" : ""}" data-date="${esc(d)}" aria-pressed="${d === day.iso}">${esc(dateShort(d))}${d === today ? "<i>今日</i>" : ""}</button>`).join("");
+    // 日付は「1日の予算」と「資金」で共通
+    const chips = dates.map(d => `<button type="button" class="chip-btn${d < today ? " done" : ""}" data-date="${esc(d)}" aria-pressed="${d === day.iso}">${esc(dateShort(d))}${d === today ? "<i>今日</i>" : ""}</button>`).join("");
+    $("dayDate").innerHTML = chips;
+    $("bankDate").innerHTML = chips;
     document.querySelectorAll("#dayStyleSeg button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.rule === day.rule)));
     $("dayBudget").value = day.budget;
+    if (document.activeElement !== $("bankInput")) $("bankInput").value = day.bank > 0 ? day.bank : "";
     $("dayPast").checked = !!day.past;
+    $("bankPast").checked = !!day.past;
   }
   // 計算は軽い(シミュレーションを使わない)ので、そのまま描き直す
   function dayRun() {
-    if (view !== "day") return;
+    if (view !== "day" && view !== "bank") return;
     renderDayDates();
     renderDay();
   }
@@ -2487,21 +2671,35 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     return m ? `${Number(m[1])}:${m[2]}時点のオッズ` : "";
   }
 
+  // 「1日の予算」(view day: 予算を同額で分ける)と「資金」(view bank: 1点 = 資金の5%)で同じ描き方を使う。要素の id は day〜 / bank〜
   function renderDay() {
-    if (view !== "day") return;
+    if (view !== "day" && view !== "bank") return;
+    const isBank = view === "bank", el = k => $((isBank ? "bank" : "day") + k);
+    const ruleKey = isBank ? "std" : day.rule;
     const all = dayRaces();
-    const units = Math.floor(Math.max(0, Number(day.budget) || 0) / 100);
+    // 資金: 1点 = 資金の5%(100円単位・最低100円)、1日に使うのは資金の半分まで(点数で絞る)
+    const bank = isBank ? Math.max(0, Number(day.bank) || 0) : 0;
+    if (isBank && !bank) {
+      el("Verdict").innerHTML = "資金の残高を入れてください(初めは5000円)。";
+      ["Stats", "Venues", "List", "Skips"].forEach(k => { el(k).innerHTML = ""; });
+      el("SkipBox").hidden = true;
+      return;
+    }
+    const bankUnit = Math.max(1, Math.floor(bank * BANK_FRAC / 100));
+    const units = bank > 0 ? bankUnit * Math.max(1, Math.floor(bank * BANK_DAY_MAX / (bankUnit * 100))) : Math.floor(Math.max(0, Number(day.budget) || 0) / 100);
     const budget = units * 100;
     const cands = [], skips = [];
     for (const x of all) {
       if (x.ended && !day.past) { skips.push({ r: x.r, why: "発売終了" }); continue; }
-      const f = fukuRace(x.r);
+      const f = fukuRace(x.r, ruleKey);
       if (!f.picks) { skips.push({ r: x.r, why: f.why }); continue; }
       f.picks.forEach(p => cands.push(Object.assign(p, { x, at: f.at, total: f.total })));
     }
-    const bets = dayAllocate(cands, units);
+    const bets = bank > 0
+      ? bank < 100 ? [] : cands.slice().sort((a, b) => b.ev - a.ev).slice(0, units / bankUnit).map(x => Object.assign({}, x, { amount: bankUnit * 100 }))
+      : dayAllocate(cands, units);
     const chosen = new Set(bets.map(b => b.x));
-    cands.filter(c => !chosen.has(c.x)).forEach(c => { if (!skips.some(s => s.r === c.x.r)) skips.push({ r: c.x.r, why: "予算が足りない" }); });
+    cands.filter(c => !chosen.has(c.x)).forEach(c => { if (!skips.some(s => s.r === c.x.r)) skips.push({ r: c.x.r, why: isBank ? "資金の半分を超える" : "予算が足りない" }); });
     const total = bets.reduce((a, b) => a + b.amount, 0);
     // どれかが当たる確率(各レースは別々に決まるとして計算)。Harville式は人気馬の3着以内率を少し高めに出すので目安
     const missAll = bets.reduce((a, b) => a * (1 - b.p), 1);
@@ -2509,7 +2707,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
 
     const places = [...new Set(all.map(x => x.r.place))].sort((a, b) => (PLACE_ORDER.indexOf(a) + 99) % 99 - (PLACE_ORDER.indexOf(b) + 99) % 99);
     const byPlace = p => bets.filter(b => b.x.r.place === p);
-    const rule = FUKU_RULES[day.rule];
+    const rule = FUKU_RULES[ruleKey];
     const noOdds = all.filter(x => !x.ended && /まだない|そろっていない/.test((skips.find(s => s.r === x.r) || {}).why || "")).length;
 
     let v;
@@ -2517,23 +2715,25 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     else if (!day.past && all.every(x => x.ended)) v = `<span class="skip">この日のレースは発売が終わっています。</span>`;
     else if (!bets.length) v = noOdds
       ? `<span class="skip">複勝オッズがまだ出ていないレースがあります(前日発売か当日の朝から)。オッズが入ると、ここに買う複勝が出ます。</span>`
-      : `<span class="skip">この日は、期待値${FUKU_EV_MIN.toFixed(1)}以上の複勝が見つかりません。予算は使わずに見送るのがおすすめです。</span>`;
+      : `<span class="skip">この日は、条件に合う${rule.wide ? "複勝・ワイド" : "複勝"}が見つかりません。予算は使わずに見送るのがおすすめです。</span>`;
     else {
       const pl = places.filter(p => byPlace(p).length).map(p => `${esc(p)}${byPlace(p).length}点`).join("・");
-      v = `予算${yen(budget)}のうち<strong>${yen(total)}</strong>で、人気馬の複勝を<strong>${pl}</strong>買います(1点${yen(bets[0].amount)})。` +
-        (budget - total >= 100 ? `残りの${yen(budget - total)}は、条件に合う複勝がないので使いません。` : "") +
+      v = (bank > 0 ? `資金${yen(bank)}から、1点${yen(bankUnit * 100)}(資金の${Math.round(BANK_FRAC * 100)}%)・最大${units / bankUnit}点(資金の半分まで)で、<strong>${yen(total)}</strong>を使い、` : `予算${yen(budget)}のうち<strong>${yen(total)}</strong>で、`) +
+        `人気馬の${[...new Set(bets.map(b => b.type || "複勝"))].join("と")}を<strong>${pl}</strong>買います(1点${yen(bets[0].amount)})。` +
+        (budget - total >= 100 ? `残りの${yen(budget - total)}は、条件に合う馬券がないので使いません。` : "") +
         (noOdds ? `<span class="muted">(複勝オッズがまだのレースが${noOdds}つあります。オッズが入ると増えることがあります)</span>` : "");
     }
-    $("dayVerdict").innerHTML = v;
+    el("Verdict").innerHTML = v;
     const stat = (k, val, cls) => `<div class="stat"><span class="k">${k}</span><span class="v ${cls || ""}">${val}</span></div>`;
-    $("dayStats").innerHTML = bets.length ? [
+    el("Stats").innerHTML = bets.length ? [
       stat("合計金額", yen(total)),
+      ...(isBank ? [stat("1点の金額", yen(bankUnit * 100))] : []),
       stat("買う点数", bets.length + "点"),
       stat("当たる点数の目安", expHits.toFixed(1) + "点"),
       stat("どれかが当たる確率", pct(1 - missAll, 0)),
-      stat("過去の回収率", day.rule === "hit" ? "101%" : "104%")
+      stat("過去の回収率", rule.roi)
     ].join("") : "";
-    $("dayVenues").innerHTML = places.map(p => {
+    el("Venues").innerHTML = places.map(p => {
       const bs = byPlace(p), sum = bs.reduce((a, b) => a + b.amount, 0);
       const n = all.filter(x => x.r.place === p).length;
       const rs = [...new Set(bs.map(b => b.x.r.no + "R"))];
@@ -2542,7 +2742,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
         : `<div class="venue-sum none"><span class="k">${esc(p)}</span><span class="v">買わない</span><span class="s">${n}レースすべて見送り</span></div>`;
     }).join("");
 
-    $("dayList").innerHTML = places.filter(p => byPlace(p).length).map(p => {
+    el("List").innerHTML = places.filter(p => byPlace(p).length).map(p => {
       const bs = byPlace(p);
       const raceList = [...new Set(bs.map(b => b.x))];
       return `<section class="win"><div class="win-b">
@@ -2550,10 +2750,10 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
         <div class="day-races">${raceList.map(x => {
           const r = x.r, sale = x.sale, rb = bs.filter(b => b.x === x);
           const rows = rb.map(t => {
-            const w = wakuOf(t.u, t.total);
+            const w = wakuOf(t.u, t.total), w2 = t.u2 ? wakuOf(t.u2, t.total) : 0;
             return `<tr>
-            <td><span class="type-pill" title="${BET_DESC["複勝"]}">複勝</span></td>
-            <td><span class="combo"><span class="chip w${w}">${t.u}</span>${nameBtn(t.name)}</span></td>
+            <td><span class="type-pill" title="${BET_DESC[t.type || "複勝"]}">${t.type || "複勝"}</span></td>
+            <td><span class="combo"><span class="chip w${w}">${t.u}</span>${nameBtn(t.name)}${t.u2 ? `<span class="sep">-</span><span class="chip w${w2}">${t.u2}</span>${nameBtn(t.name2)}` : ""}</span></td>
             <td class="r num">${yen(t.amount)}</td>
             <td class="r num">${pct(t.p)}</td>
             <td class="r num">${t.lo.toFixed(1)}〜${t.hi.toFixed(1)}倍</td>
@@ -2570,42 +2770,224 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
               <span class="amt">${yen(rb.reduce((a, b) => a + b.amount, 0))}</span>
               <button type="button" class="btn" data-open="${esc(r.id)}">レースを開く</button></div>
             <div class="tbl-wrap"><table class="t">
-              <thead><tr><th>券種</th><th>馬</th><th class="r">金額</th><th class="r">3着以内率</th><th class="r">複勝オッズ</th><th class="r">期待値</th><th class="r" title="購入の直前に複勝オッズ(下限)がこれ未満に下がっていたら、期待値が1を切るので買わない">買ってよいオッズ</th><th class="r">当たれば</th></tr></thead>
+              <thead><tr><th>券種</th><th>馬</th><th class="r">金額</th><th class="r" title="複勝は3着以内、ワイドは2頭とも3着以内に入る確率">的中率</th><th class="r">オッズ</th><th class="r">期待値</th><th class="r" title="購入の直前に複勝オッズ(下限)がこれ未満に下がっていたら、期待値が基準を切るので買わない">買ってよいオッズ</th><th class="r">当たれば</th></tr></thead>
               <tbody>${rows}</tbody></table></div>
             <div class="dr-foot">${fukuAtText(rb[0].at) ? `<span>${esc(fukuAtText(rb[0].at))}</span>` : ""}<span>購入の直前に、複勝オッズの下限が「買ってよいオッズ」以上か確かめてください</span>${sale.text ? `<span>${esc(sale.text)}</span>` : ""}</div>
           </div>`;
         }).join("")}</div></div></section>`;
     }).join("");
 
-    $("daySkipBox").hidden = !skips.length;
-    $("daySkips").innerHTML = places.map(p => {
+    el("SkipBox").hidden = !skips.length;
+    el("Skips").innerHTML = places.map(p => {
       const ss = skips.filter(x => x.r.place === p).sort((a, b) => Number(a.r.no) - Number(b.r.no));
       return ss.length ? `<div class="row"><b>${esc(p)}</b>${ss.map(x => `<button type="button" class="skip-chip" data-open="${esc(x.r.id)}" title="${esc(x.r.name + ": " + x.why)}">${esc(String(x.r.no))}R ${esc(x.why)}</button>`).join("")}</div>` : "";
     }).join("");
   }
 
+  // ---------------- 一獲千金 ----------------
+  // 重賞(G1〜G3)だけで、3連単・3連複・馬単・馬連の高配当を狙う(2026-10-25 ユーザー指示「人気、実力だけではなくすべての要素を取り入れ渾身の買い目を」)。
+  // 平場の検証ではこの4券種は回収率70%台以下で、重賞は検証外。夢を買う馬券として、1日の予算・資金とは分けて出す。
+  // シミュレーターの候補: オッズの比重を JP_BLEND_MAX までに下げて走らせ(展開・コース・枠・馬場・血統の差を残す)、推定オッズが minOdds 以上の組から 期待値 × √的中率 の順に選ぶ。
+  // Claudeの渾身の買い目: db のレースの ikkaku(Claudeが判断材料を読んで書く。形は シミュレーター/レースデータの作り方.md の「一獲千金」)
+  const JP_KEY = "keiba-jackpot-v1";
+  const JP_BLEND_MAX = 70;
+  const JP_RULE = {
+    "3連単": { minOdds: 80, minP: 0.003, max: 6, share: 0.3 },
+    "3連複": { minOdds: 20, minP: 0.006, max: 5, share: 0.3 },
+    "馬単": { minOdds: 15, minP: 0.008, max: 4, share: 0.2 },
+    "馬連": { minOdds: 10, minP: 0.012, max: 4, share: 0.2 }
+  };
+  const JP_TYPES = Object.keys(JP_RULE);
+  const jp = { id: null, budget: 3000, sim: null, mk: null, tab: null };
+  let jpTimer = null;
+  try { const s = JSON.parse(localStorage.getItem(JP_KEY) || "{}"); if (s.id) jp.id = String(s.id); if (Number(s.budget) > 0) jp.budget = Number(s.budget); } catch (e) {}
+  function jpSave() { try { localStorage.setItem(JP_KEY, JSON.stringify({ id: jp.id, budget: jp.budget })); } catch (e) {} }
+  function isGraded(r) { return /^(J・)?(G|Jpn)/.test(String((r && r.grade) || "")); }
+  function jpRaces() {
+    const { up, past } = sortedRaces();
+    return up.filter(isGraded).concat(past.filter(isGraded));
+  }
+  function jpRun() {
+    if (view !== "jackpot") return;
+    const list = jpRaces();
+    // 自分で選んだレースがなければ、これからの重賞(表示中のレースが重賞ならそれ)を出す
+    const up = list.filter(r => (r.iso || "") >= todayIso());
+    if (!jp.picked || !list.some(r => r.id === jp.id)) jp.id = (up.find(r => r.id === race.id) || up[0] || list.find(r => r.id === jp.id) || list[0] || {}).id || null;
+    $("jpRaces").innerHTML = list.length ? list.map(r => `<button type="button" class="chip-btn${r.iso < todayIso() ? " done" : ""}" data-jp="${esc(r.id)}" aria-pressed="${r.id === jp.id}">${esc(dateShort(r.iso))} ${esc(r.name)} ${gradeBadge(r.grade, true)}${docs[r.id] && docs[r.id].ikkaku ? "<em>渾身</em>" : ""}</button>`).join("")
+      : `<span class="muted small">重賞のデータがまだありません(出走登録の後、木曜ごろに入ります)</span>`;
+    if (document.activeElement !== $("jpBudget")) $("jpBudget").value = jp.budget;
+    if (!jp.id) { $("jpVerdict").textContent = "重賞のデータが届くと、ここに買い目が出ます。"; $("jpClaude").innerHTML = ""; $("jpSim").innerHTML = ""; return; }
+    if (race.id !== jp.id) selectRace(jp.id);
+    $("jpVerdict").textContent = "計算中…";
+    clearTimeout(jpTimer);
+    jpTimer = setTimeout(() => {
+      if (race.id !== jp.id) return;
+      horses = roster.filter(h => !h.scratched);
+      const b0 = settings.blend;
+      settings.blend = Math.min(Number(b0) || 0, JP_BLEND_MAX);
+      try { jp.sim = simulate(); } finally { settings.blend = b0; }
+      jp.mk = marketProbs();
+      jp.tab = jpTables(jp.sim);
+      renderJp();
+    }, 30);
+  }
+  // シミュレーションの1〜3着から、馬単・馬連・3連単・3連複の組ごとの回数を数える
+  function jpTables(s) {
+    const n = s.n, o = s.order, t = {};
+    JP_TYPES.forEach(k => { t[k] = new Map(); });
+    const inc = (m, k) => m.set(k, (m.get(k) || 0) + 1);
+    for (let r = 0; r < s.N; r++) {
+      const a = o[r * 3], b = o[r * 3 + 1], c = o[r * 3 + 2];
+      inc(t["馬単"], a * n + b);
+      inc(t["馬連"], Math.min(a, b) * n + Math.max(a, b));
+      inc(t["3連単"], (a * n + b) * n + c);
+      const st = [a, b, c].sort((x, y) => x - y);
+      inc(t["3連複"], (st[0] * n + st[1]) * n + st[2]);
+    }
+    return t;
+  }
+  function jpBet(type, h) {
+    const n = jp.sim.n, hh = type === "馬連" || type === "3連複" ? h.slice().sort((a, b) => a - b) : h.slice();
+    const k = hh.length === 2 ? hh[0] * n + hh[1] : (hh[0] * n + hh[1]) * n + hh[2];
+    const p = (jp.tab[type].get(k) || 0) / jp.sim.N;
+    const mp = type === "馬単" ? jp.mk.ex[k] : type === "馬連" ? jp.mk.quin[k] : type === "3連単" ? jp.mk.tri.get(k) : jp.mk.trio.get(k);
+    const odds = estOdds(type, mp || 1e-6);
+    return { type, h: hh, p, odds, ev: p * odds };
+  }
+  function jpAuto() {
+    const n = jp.sim.n;
+    return JP_TYPES.map(type => {
+      const R = JP_RULE[type], list = [];
+      for (const [k, c] of jp.tab[type]) {
+        if (c / jp.sim.N < R.minP) continue;
+        const h = type.charAt(0) === "3" ? [Math.floor(k / (n * n)), Math.floor(k / n) % n, k % n] : [Math.floor(k / n), k % n];
+        const b = jpBet(type, h);
+        if (b.odds >= R.minOdds) list.push(b);
+      }
+      list.sort((a, b) => b.ev * Math.sqrt(b.p) - a.ev * Math.sqrt(a.p));
+      return { type, share: R.share, bets: list.slice(0, R.max) };
+    });
+  }
+  // Claudeの買い目(着ごとの馬名の並び = フォーメーション。box は全着に同じ馬)を組に広げる。取消・除外の馬が入る組は外す
+  function jpClaudeGroups(ik) {
+    const missing = new Set();
+    const groups = (Array.isArray(ik.bets) ? ik.bets : []).filter(g => g && JP_RULE[g.type]).map(g => {
+      const len = g.type.charAt(0) === "3" ? 3 : 2;
+      const legs = Array.isArray(g.box) ? Array(len).fill(g.box) : Array.isArray(g.legs) ? g.legs : [];
+      const idx = legs.slice(0, len).map(l => (Array.isArray(l) ? l : [l]).map(nm => {
+        const i = horses.findIndex(h => h.name === String(nm));
+        if (i < 0) missing.add(String(nm));
+        return i;
+      }).filter(i => i >= 0));
+      const seen = new Set(), bets = [];
+      const rec = (k, cur) => {
+        if (k === len) { const b = jpBet(g.type, cur); const key = b.h.join("-"); if (!seen.has(key)) { seen.add(key); bets.push(b); } return; }
+        for (const i of idx[k] || []) if (!cur.includes(i)) rec(k + 1, cur.concat(i));
+      };
+      if (idx.length === len) rec(0, []);
+      bets.sort((a, b) => b.p - a.p);   // 予算が足りないときは、来やすい組から残す
+      return { type: g.type, share: Number(g.share) > 0 ? Number(g.share) : JP_RULE[g.type].share, why: String(g.why || ""), bets };
+    });
+    return { groups, missing: [...missing] };
+  }
+  // 予算を券種の割合(share)で分け(最大剰余で100円単位)、券種の中は同額。点数が予算より多いときは上の組から
+  function jpAllocate(groups, budget) {
+    const units = Math.floor(Math.max(0, budget) / 100);
+    const live = groups.filter(g => g.bets.length);
+    const tot = live.reduce((a, g) => a + g.share, 0) || 1;
+    const raw = live.map(g => units * g.share / tot), u = raw.map(Math.floor);
+    let left = units - u.reduce((a, b) => a + b, 0);
+    raw.map((v, i) => [v - u[i], i]).sort((a, b) => b[0] - a[0]).forEach(([, i]) => { if (left > 0) { u[i]++; left--; } });
+    return groups.map(g => {
+      const k = live.indexOf(g), ug = k >= 0 ? u[k] : 0;
+      const nb = Math.min(g.bets.length, ug), per = nb ? Math.floor(ug / nb) : 0, extra = ug - per * nb;
+      return Object.assign({}, g, { bets: g.bets.slice(0, nb).map((b, i) => Object.assign({}, b, { amount: (per + (i < extra ? 1 : 0)) * 100 })), cut: g.bets.length - nb });
+    });
+  }
+  const jpOdds = v => (v >= 100 ? Math.round(v).toLocaleString("ja-JP") : v.toFixed(1)) + "倍";
+  function jpBlockHtml(groups, budget) {
+    const al = jpAllocate(groups, budget), all = al.flatMap(g => g.bets);
+    if (!all.length) return { html: `<p class="empty">条件に合う組がありません。</p>`, ev: null };
+    const ev = evaluate(all, jp.sim);
+    const stat = (k, v, cls) => `<div class="stat"><span class="k">${k}</span><span class="v ${cls || ""}">${v}</span></div>`;
+    const html = `<div class="stats">${[
+      stat("合計金額", yen(ev.cost) + `<small class="muted"> ${all.length}点</small>`),
+      stat("どれかが当たる確率", pct(ev.hit, 1)),
+      stat("当たったときの平均", yen10(ev.hitAvg)),
+      stat("いちばん大きい払戻", yen10(ev.max), "good")
+    ].join("")}</div>` + al.filter(g => g.bets.length || g.why).map(g => {
+      const sum = g.bets.reduce((a, b) => a + b.amount, 0), hit = g.bets.reduce((a, b) => a + b.p, 0);
+      return `<div class="jp-group"><div class="jp-gh"><span class="type-pill" title="${esc(BET_DESC[g.type] || "")}">${g.type}</span><span class="small muted">${g.bets.length}点・当たる確率 ${pct(hit, 1)}${g.cut ? `・予算が足りず${g.cut}点を外した` : ""}</span><span class="num">${yen(sum)}</span>${g.why ? `<span class="why">${esc(g.why)}</span>` : ""}</div>` +
+        (g.bets.length ? `<div class="tbl-wrap"><table class="t"><thead><tr><th>組み合わせ</th><th class="r">金額</th><th class="r" title="シミュレーター(人気の比重${JP_BLEND_MAX}%まで)でこの組が来た割合">的中率</th><th class="r" title="単勝オッズからの計算。本物のオッズは購入の前に確かめる">推定オッズ</th><th class="r">当たれば</th></tr></thead><tbody>${g.bets.map(b => `<tr><td>${comboHtml(b)}</td><td class="r num">${yen(b.amount)}</td><td class="r num">${pct(b.p, 2)}</td><td class="r num">${jpOdds(b.odds)}</td><td class="r num ev-good">${yen10(b.amount * b.odds)}</td></tr>`).join("")}</tbody></table></div>` : "");
+    }).join("");
+    return { html, ev };
+  }
+  function renderJp() {
+    if (view !== "jackpot" || !jp.sim || race.id !== jp.id) return;
+    const d = docs[race.id] || {}, ik = d.ikkaku && typeof d.ikkaku === "object" ? d.ikkaku : null;
+    const budget = Math.max(0, Number(jp.budget) || 0);
+    const kari = !canBlend();
+    const top = jp.sim.win.map((v, i) => [v, i]).sort((a, b) => b[0] - a[0]).slice(0, 3).map(x => horses[x[1]].name);
+    // Claudeの渾身の買い目
+    let cl = null;
+    if (ik) {
+      const { groups, missing } = jpClaudeGroups(ik);
+      cl = jpBlockHtml(groups, budget);
+      const factors = Array.isArray(ik.factors) ? ik.factors : [];
+      $("jpClaudeSub").textContent = ik.at ? `${fmtTime(ik.at)} に決めた買い目${ik.basis ? "(" + ik.basis + ")" : ""}` : "";
+      $("jpClaude").innerHTML = (ik.title ? `<h3 class="jp-title">${esc(ik.title)}</h3>` : "") +
+        (ik.story ? `<p class="jp-story">${esc(ik.story)}</p>` : "") +
+        (factors.length ? `<div class="jp-factors">${factors.map(f => `<div><b>${esc(f && f.k || "")}</b>${esc(f && f.v || "")}</div>`).join("")}</div>` : "") +
+        (missing.length ? `<div class="notice"><b>取消・除外:</b> ${missing.map(esc).join("、")} が入る組は外しました。Claudeが次の更新で買い目を見直します</div>` : "") +
+        cl.html + (ik.note ? `<p class="small muted">${esc(ik.note)}</p>` : "");
+    } else {
+      $("jpClaudeSub").textContent = "";
+      $("jpClaude").innerHTML = `<p class="empty">このレースのClaudeの買い目はまだです。出走馬と枠順が決まると、判断材料・追い切り・ニュースを読んで定期実行が書き込みます(当日の馬場・馬体重で見直し)。それまでは下のシミュレーターの候補を参考にしてください。</p>`;
+    }
+    // シミュレーターの候補
+    const sm = jpBlockHtml(jpAuto(), budget);
+    $("jpSim").innerHTML = `<p class="small muted">シミュレーターの1〜3着の予想(勝率順): ${top.map(esc).join(" → ")}。人気の比重 ${Math.round((jp.sim.wMk || 0) * 100)}%${kari ? "(単勝オッズがまだ仮なので、能力値と条件だけで計算)" : ""}</p>` + sm.html;
+    const main = cl && cl.ev ? cl : sm, by = cl && cl.ev ? "Claudeの渾身の買い目" : "シミュレーターの候補";
+    $("jpVerdict").innerHTML = main.ev
+      ? `${esc(race.name)}${race.grade ? "(" + esc(race.grade) + ")" : ""}は、${by}を<strong>${yen(main.ev.cost)}</strong>で買います。どれかが当たる確率は<strong>${pct(main.ev.hit, 1)}</strong>、当たれば平均<strong>${yen10(main.ev.hitAvg)}</strong>・最大<strong>${yen10(main.ev.max)}</strong>(推定オッズ)。` + (kari ? `<span class="muted">単勝オッズがまだ仮の値なので、推定オッズも仮です。</span>` : "")
+      : `<span class="skip">予算が足りないか、条件に合う組がありません。</span>`;
+  }
+  function bindJp() {
+    $("jpRaces").addEventListener("click", e => { const b = e.target.closest("[data-jp]"); if (!b) return; jp.id = b.dataset.jp; jp.picked = true; jpSave(); jpRun(); });
+    $("jpBudget").addEventListener("input", e => { jp.budget = Math.max(0, Number(e.target.value) || 0); jpSave(); clearTimeout(dayTimer); dayTimer = setTimeout(renderJp, 250); });
+    $("jpOpen").addEventListener("click", () => { setView("race"); window.scrollTo(0, 0); });
+  }
+
   function setView(v) {
-    view = v === "day" || v === "news" ? v : "race";
+    view = ["day", "bank", "jackpot", "news"].includes(v) ? v : "race";
     $("viewRace").hidden = view !== "race";
     $("viewDay").hidden = view !== "day";
+    $("viewBank").hidden = view !== "bank";
+    $("viewJp").hidden = view !== "jackpot";
     $("viewNews").hidden = view !== "news";
     $("tabRace").setAttribute("aria-selected", String(view === "race"));
     $("tabDay").setAttribute("aria-selected", String(view === "day"));
+    $("tabBank").setAttribute("aria-selected", String(view === "bank"));
+    $("tabJp").setAttribute("aria-selected", String(view === "jackpot"));
     $("tabNews").setAttribute("aria-selected", String(view === "news"));
     try { localStorage.setItem("keiba-view", view); } catch (e) {}
-    if (view === "day") dayRun();
+    if (view === "day" || view === "bank") dayRun();
+    if (view === "jackpot") { if (isGraded(race) && (race.iso || "") >= todayIso()) { jp.id = race.id; jp.picked = true; } jpRun(); }
     if (view === "news") { renderNews(); newsMarkRead(); }
   }
   function bindDay() {
     document.querySelector(".tabs").addEventListener("click", e => { const b = e.target.closest("[data-view]"); if (b) setView(b.dataset.view); });
     $("dayDate").addEventListener("click", e => { const b = e.target.closest("[data-date]"); if (!b) return; day.iso = b.dataset.date; dayRun(); });
     $("dayBudget").addEventListener("input", e => { day.budget = Number(e.target.value) || 0; daySave(); clearTimeout(dayTimer); dayTimer = setTimeout(renderDay, 250); });
+    $("bankDate").addEventListener("click", e => { const b = e.target.closest("[data-date]"); if (!b) return; day.iso = b.dataset.date; dayRun(); });
+    $("bankInput").addEventListener("input", e => { day.bank = Math.max(0, Number(e.target.value) || 0); daySave(); clearTimeout(dayTimer); dayTimer = setTimeout(renderDay, 250); });
+    $("bankPast").addEventListener("change", e => { day.past = e.target.checked; daySave(); dayRun(); });
     $("dayStyleSeg").addEventListener("click", e => { const b = e.target.closest("button"); if (!b || !FUKU_RULES[b.dataset.rule]) return; day.rule = b.dataset.rule; daySave(); renderDayDates(); renderDay(); });
     $("dayPast").addEventListener("change", e => { day.past = e.target.checked; daySave(); dayRun(); });
-    $("viewDay").addEventListener("click", e => {
+    ["viewDay", "viewBank"].forEach(id => $(id).addEventListener("click", e => {
       const b = e.target.closest("[data-open]"); if (!b) return;
       setView("race"); selectRace(b.dataset.open); window.scrollTo(0, 0);
-    });
+    }));
   }
 
   // ---------------- ニュース ----------------
@@ -3166,7 +3548,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
         }
         MODEL = m;
         renderModel();
-        if (changed) { renderEdit(); run(0); dayRun(); }
+        if (changed) { renderEdit(); run(0); dayRun(); jpRun(); }
         renderReview();
       }, () => {});
     } catch (e) {}
@@ -3194,6 +3576,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
         setSync("on", "自動更新: " + (latest ? fmtTime(latest) + " 取得" : "新しい情報を待っています") +
           (added.length ? `・レース追加: ${added.map(id => races[id].name).join("、")}` : ""));
         dayRun();
+        jpRun();
       }, () => { setSync("off", "自動更新が止まりました。ページを開き直してください"); });
     } catch (e) {
       setSync("off", "自動更新に接続できませんでした");
@@ -3202,6 +3585,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
 
   bind();
   bindDay();
+  bindJp();
   bindNews();
   renderNextUpdate();
   setInterval(() => { renderNextUpdate(); renderSale(); renderManual(); }, 60 * 1000);

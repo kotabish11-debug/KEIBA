@@ -9,6 +9,7 @@
 #          馬ページが取れていなければ 4。オッズのページを渡すと、単勝オッズと馬体重はそちらを使う
 #   perl jra.pl result <結果.html>                                          … result_json.pl と同じ形の着順。結果がまだ無ければ終了コード 2
 #   perl jra.pl fuku   <単勝・複勝オッズ.html>                              … {"<馬番>":[単勝,複勝の下限,複勝の上限]}。オッズが無ければ終了コード 2
+#   perl jra.pl wide   <ワイドオッズ.html(pw155)>                           … {"<馬番>-<馬番>":[下限,上限]}。オッズが無ければ終了コード 2
 # JRAには Ω指数・騎手のコース連対率・調教師×騎手・前走のペースが無い。Ω指数の代わりに、出馬表の近4走の着差(勝ち馬との差)と格から
 # 「近走の指数」を作る(yahoo.pl と同じ式。検証はしていない目安)。距離・コースの成績と間隔は馬ページの全成績から数える
 use utf8; use strict; use warnings;
@@ -94,6 +95,18 @@ if ($cmd eq 'fuku') {
   my $o = odds_rows(slurp(shift)); my %f;
   for my $b (keys %$o) { my $x = $o->{$b}; next unless defined $x->{lo}; $f{$b} = [(defined $x->{tan} ? $x->{tan} + 0 : undef), $x->{lo} + 0, $x->{hi} + 0] }
   exit 2 unless %f; print encode_json(\%f), "\n"; exit 0;
+}
+# ワイドのオッズページ(pw155。1頭目ごとの表: caption が1頭目の馬番、行が相手の馬番と「下限 - 上限」)
+if ($cmd eq 'wide') {
+  my $h = slurp(shift); my %o;
+  while ($h =~ /<table[^>]*class="[^"]*\bwide\b[^"]*"[^>]*>(.*?)<\/table>/sg) {
+    my $t = $1; my ($u1) = $t =~ /<caption>\s*(\d+)\s*<\/caption>/ or next;
+    while ($t =~ /<th scope="row">\s*(\d+)\s*<\/th>\s*<td[^>]*>(.*?)<\/td>/sg) {
+      my $u2 = $1; my $c = $2; my ($lo) = $c =~ /class="min">\s*([\d.]+)/ or next; my ($hi) = $c =~ /class="max">\s*([\d.]+)/ or next;
+      $o{join '-', sort { $a <=> $b } $u1 + 0, $u2 + 0} = [$lo + 0, $hi + 0];
+    }
+  }
+  exit 2 unless %o; print JSON::PP->new->canonical->encode(\%o), "\n"; exit 0;
 }
 
 # 見出し(日付・発走時刻・天候・馬場・レース名・条件・距離)

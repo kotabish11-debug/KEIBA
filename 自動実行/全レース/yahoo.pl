@@ -8,6 +8,7 @@
 #   perl yahoo.pl need   <出馬表.html> [前回のdbのデータ.json]                … 馬ページを取る必要がある馬ID(前回の素データに無い馬)
 #   perl yahoo.pl result <結果ページ.html>                                 … result_json.pl と同じ形の着順。結果がまだ無ければ終了コード 2
 #   perl yahoo.pl fuku   <オッズページ(race/odds/tfw).html>                    … {"<馬番>":[単勝,複勝の下限,複勝の上限]}。オッズが無ければ終了コード 2
+#   perl yahoo.pl wide   <オッズページ(race/odds/wide).html>                   … {"<馬番>-<馬番>":[下限,上限]}。オッズが無ければ終了コード 2
 # スポーツナビには Ω指数・騎手のコース連対率・調教師×騎手・前走の馬場とペースが無い。
 # Ω指数の代わりに、近走の着差(勝ち馬との差)と格(G1〜G3)から「近走の指数」を作る(検証はしていない目安)
 use utf8; use strict; use warnings;
@@ -149,6 +150,19 @@ if ($cmd eq 'fuku') {
     $o{$c[1]} = [($c[3] =~ /^[\d.]+$/ ? $c[3] + 0 : undef), $lo + 0, $hi + 0];
   }
   exit 2 unless %o; print encode_json(\%o), "\n"; exit 0;
+}
+
+# ワイドのオッズページ(race/odds/wide。1頭目ごとの表に、相手の馬番と「下限 - 上限」が並ぶ。終わったレースは確定オッズ)から {"<小さい馬番>-<大きい馬番>":[下限,上限]}
+if ($cmd eq 'wide') {
+  my $h = slurp(shift); my %o;
+  while ($h =~ /<table[^>]*hr-tableLeftTop--oddsW[^>]*>(.*?)<\/table>/sg) {
+    my $t = $1; my ($u1) = $t =~ /<thead>.*?<th[^>]*>\s*(\d+)\s*<\/th>/s or next;
+    while ($t =~ /<th[^>]*scope="row">\s*(\d+)\s*<\/th>\s*<td[^>]*>(.*?)<\/td>/sg) {
+      my $u2 = $1; my ($lo, $hi) = txt($2) =~ /^([\d.]+)\s*-\s*([\d.]+)$/ or next;
+      $o{join '-', sort { $a <=> $b } $u1 + 0, $u2 + 0} = [$lo + 0, $hi + 0];
+    }
+  }
+  exit 2 unless %o; print JSON::PP->new->canonical->encode(\%o), "\n"; exit 0;
 }
 
 if ($cmd eq 'result') {

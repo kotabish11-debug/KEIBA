@@ -132,18 +132,26 @@ for off in -1 $(seq 0 "${AHEAD:-6}"); do
           if [ "$SOURCE" = jra ]; then [ -s "$OUT/tmp/jo_$ID.html" ] || jpage O "$R" "$OUT/tmp/jo_$ID.html"; FUKU=$(perl "$HERE/jra.pl" fuku "$OUT/tmp/jo_$ID.html" 2>/dev/null); fi
           if [ -z "$FUKU" ]; then ykai "$DISO" "$V"; if [ -n "$YK" ]; then yget "race/odds/tfw/$YK$R" "$OUT/tmp/tfw_$ID.html"; FUKU=$(perl "$HERE/yahoo.pl" fuku "$OUT/tmp/tfw_$ID.html" 2>/dev/null); fi; fi
         fi
+        # ワイドのオッズ(人気馬どうしのワイドの買い方が使う。2026-10-24〜)。単勝・複勝と同じ回に取る。JRAは単勝・複勝のページからワイドのページ(pw155)へのリンクを拾う
+        WIDE=""; if [ -n "$FUKU" ]; then
+          if [ "$SOURCE" = jra ] && [ -s "$OUT/tmp/jo_$ID.html" ] && WC=$(perl "$HERE/jra.pl" link "$OUT/tmp/jo_$ID.html" "pw155ou[A-Z0-9]*$V\\d{8}$R${D}Z/.."); then
+            jget accessO.html "$WC" "$OUT/tmp/jw_$ID.html"; WIDE=$(perl "$HERE/jra.pl" wide "$OUT/tmp/jw_$ID.html" 2>/dev/null); fi
+          if [ -z "$WIDE" ]; then ykai "$DISO" "$V"; if [ -n "$YK" ]; then yget "race/odds/wide/$YK$R?ninki=0" "$OUT/tmp/yw_$ID.html"; WIDE=$(perl "$HERE/yahoo.pl" wide "$OUT/tmp/yw_$ID.html" 2>/dev/null); fi; fi
+        fi
         FUKUAT=$(TZ=JST-9 date +%Y-%m-%dT%H:%M:00+09:00)
         if [ $RC -eq 0 ] && { [ -z "$DBFILE" ] || [ "$(docid_of "$DBFILE")" = "k$ID" ]; }; then
           ST=$(perl "$HERE/star.pl" "$OUT/tmp/r_$ID.json" "$MODEL")
           perl -Mutf8 -MJSON::PP -0777 -e 'my $d = JSON::PP->new->utf8->decode(do { local $/; open my $h, "<:raw", $ARGV[0]; <$h> }); my $s = JSON::PP->new->utf8->decode($ARGV[1]);
             $d->{star} = $s->{star}; $d->{starProb} = $s->{starProb}; $d->{starHonmei} = $s->{honmei}; $d->{dayBias} = JSON::PP->new->utf8->decode($ARGV[2]) if $ARGV[2];
             if ($ARGV[3]) { $d->{fuku} = JSON::PP->new->utf8->decode($ARGV[3]); $d->{fukuAt} = $ARGV[4] }
-            print JSON::PP->new->utf8->canonical->encode($d)' "$OUT/tmp/r_$ID.json" "$ST" "$DAYB" "$FUKU" "$FUKUAT" > "$OUT/races/k$ID.json"
+            if ($ARGV[5]) { $d->{wide} = JSON::PP->new->utf8->decode($ARGV[5]); $d->{wideAt} = $ARGV[4] }
+            print JSON::PP->new->utf8->canonical->encode($d)' "$OUT/tmp/r_$ID.json" "$ST" "$DAYB" "$FUKU" "$FUKUAT" "$WIDE" > "$OUT/races/k$ID.json"
           printf 'race\tk%s\t%s\n' "$ID" "$OUT/races/k$ID.json" >> "$OUT/manifest.tsv"
         elif [ -n "$DBFILE" ]; then
           DOC=$(docid_of "$DBFILE"); ST=$(perl "$HERE/star.pl" "$DBFILE" "$MODEL")
           perl -Mutf8 -MJSON::PP -e 'my $s = JSON::PP->new->utf8->decode($ARGV[0]); my %u = (star => $s->{star}, starProb => $s->{starProb}, starHonmei => $s->{honmei});
-            $u{dayBias} = JSON::PP->new->utf8->decode($ARGV[1]) if $ARGV[1]; if ($ARGV[2]) { $u{fuku} = JSON::PP->new->utf8->decode($ARGV[2]); $u{fukuAt} = $ARGV[3] } print JSON::PP->new->utf8->canonical->encode(\%u)' "$ST" "$DAYB" "$FUKU" "$FUKUAT" > "$OUT/updates/$DOC.json"
+            $u{dayBias} = JSON::PP->new->utf8->decode($ARGV[1]) if $ARGV[1]; if ($ARGV[2]) { $u{fuku} = JSON::PP->new->utf8->decode($ARGV[2]); $u{fukuAt} = $ARGV[3] }
+            if ($ARGV[4]) { $u{wide} = JSON::PP->new->utf8->decode($ARGV[4]); $u{wideAt} = $ARGV[3] } print JSON::PP->new->utf8->canonical->encode(\%u)' "$ST" "$DAYB" "$FUKU" "$FUKUAT" "$WIDE" > "$OUT/updates/$DOC.json"
           printf 'update\t%s\t%s\n' "$DOC" "$OUT/updates/$DOC.json" >> "$OUT/manifest.tsv"
         fi
         continue
