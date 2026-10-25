@@ -1876,6 +1876,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       `<div class="rv-row"><span class="k">結果</span>${(v.top3 || []).map(t => `<span>${t.rank}着 ${esc(t.name)} <small>${t.pop != null ? t.pop + "番人気" : ""}・予想${pos(t.predRank)}位</small></span>`).join("")}</div>` +
       `<div class="rv-cols"><div><span class="k">違った点</span><ul>${(v.diff || []).map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>` +
       `<div><span class="k">次に外さないために</span><ul>${(v.next || []).map(x => `<li>${esc(x)}</li>`).join("")}</ul></div></div>` +
+      (Array.isArray(v.detail) && v.detail.length ? `<div><span class="k">レースの細部(なぜこの着順か)</span><ul>${v.detail.map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>` : "") +
       (Array.isArray(v.claude) && v.claude.length ? `<div><span class="k">Claudeの分析</span><ul>${v.claude.map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>` : "") +
       `<div class="muted small">${esc(v.basis || "")}。振り返りは毎回の記録にため、能力値の重みと★の基準を自動で調整しています</div>`;
     el.hidden = false;

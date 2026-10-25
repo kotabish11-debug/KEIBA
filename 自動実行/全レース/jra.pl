@@ -192,6 +192,11 @@ if ($cmd eq 'result') {
   my ($tb) = $h =~ /<tbody>(.*?)<\/tbody>/s or exit 2;
   # 単勝の払戻(勝ち馬のオッズ)
   my %win; if ($h =~ /<li class="win">(.*?)<\/li>/s) { my $w = $1; while ($w =~ /<div class="num">(\d+)<\/div>\s*<div class="yen">([\d,]+)/g) { (my $y = $2) =~ s/,//g; $win{$1} = $y / 100 } }
+  # 複勝の払戻(100円あたりの円。1日のまとめで買い目の成績に使う)
+  my %fuku; if ($h =~ /<li class="place">(.*?)<\/li>/s) { my $w = $1; while ($w =~ /<div class="num">(\d+)<\/div>\s*<div class="yen">([\d,]+)/g) { (my $y = $2) =~ s/,//g; $fuku{$1} = $y + 0 } }
+  # 全券種の払戻 { 券種 => { 組番 => 円(100円あたり) } }。組番は馬単・3連単だけ着順どおり、ほかはページの表記どおり
+  my %pay; while ($h =~ /<li class="\w+">\s*<dl>\s*<dt>([^<]+)<\/dt>(.*?)<\/dl>/sg) { my ($t, $b) = ($1, $2); $t =~ s/\s+//g;
+    while ($b =~ /<div class="num">([\d\-]+)<\/div>\s*<div class="yen">([\d,]+)/g) { my ($k, $y) = ($1, $2); $y =~ s/,//g; $pay{$t}{$k} = $y + 0 } }
   for my $r (split /<\/tr>/, $tb) {
     my ($rank) = $r =~ /<td class="place">\s*([^<]*?)\s*</ or next; $rank = z2h($rank);
     my ($ban) = $r =~ /<td class="num">\s*(\d+)/ or next;
@@ -199,13 +204,20 @@ if ($cmd eq 'result') {
     my ($jk) = $r =~ /<td class="jockey">(.*?)<\/td>/s; $jk = txt($jk); $jk =~ s/[\s▲△☆◇★]//g;
     my @pos = $r =~ /<li title="\dコーナー通過順位">(\d+)<\/li>/g;
     my ($f3) = $r =~ /<td class="f_time">\s*([\d.]+)/; my ($time) = $r =~ /<td class="time">\s*(\d+:\d{2}\.\d)/; my ($pop) = $r =~ /<td class="pop">\s*(\d+)/;
+    my ($mg) = $r =~ /<td class="margin">(.*?)<\/td>/s; $mg = z2h(txt($mg)); my ($bw, $bwd) = $r =~ /<td class="h_weight">\s*(\d+)\s*<span>\(([+\-]?\d+)\)/;
     $rank = $1 if $rank =~ /(取消|除外|中止|失格)/;
     next unless $rank =~ /^\d+$|^(取消|除外|中止|失格)$/;
     push @order, { rank => ($rank =~ /^\d+$/ ? $rank + 0 : $rank), umaban => $ban + 0, name => $name, jockey => $jk,
-      pop => (defined $pop ? $pop + 0 : undef), odds => $win{$ban}, pass => join('-', @pos), last4 => (@pos ? $pos[-1] + 0 : undef), f3 => $f3, time => $time };
+      pop => (defined $pop ? $pop + 0 : undef), odds => $win{$ban}, pass => join('-', @pos), last4 => (@pos ? $pos[-1] + 0 : undef), f3 => $f3, time => $time,
+      margin => $mg, bw => (defined $bw ? $bw + 0 : undef), bwDiff => (defined $bwd ? $bwd + 0 : undef) };
   }
   exit 2 unless grep { ($_->{rank} // '') =~ /^\d+$/ } @order;
-  print JSON::PP->new->canonical->pretty->encode({ heads => scalar(@order), order => \@order });
+  # レースの細部: ハロンタイム・上り3F・競走中の出来事(出遅れ・不利など)
+  my ($lap) = $h =~ /ハロンタイム<\/th>\s*<td>([^<]+)/; my @laps = map { $_ + 0 } ($lap // '') =~ /([\d.]+)/g;
+  my ($up) = $h =~ /上り<\/th>\s*<td>([^<]+)/; my ($up3) = ($up // '') =~ /3F\s*([\d.]+)/;
+  my @ev; if ($h =~ /競走中の出来事等<\/h3>(.*?)<\/ul>/s) { my $e = $1; push @ev, map { txt($_) } $e =~ /<span class="txt">(.*?)<\/span>/sg }
+  print JSON::PP->new->canonical->pretty->encode({ heads => scalar(@order), order => \@order,
+    (@laps ? (laps => \@laps) : ()), ($up3 ? (last3f => $up3 + 0) : ()), (@ev ? (events => \@ev) : ()), (%fuku ? (fuku => \%fuku) : ()), (%pay ? (pay => \%pay) : ()) });
   exit 0;
 }
 

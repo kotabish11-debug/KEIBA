@@ -15,7 +15,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"; ROOT="$(cd "$HERE/../.." && pwd)"
 VENUES="${VENUES:-04 05 08}"   # 04新潟 05東京 08京都
 MODEL="$HERE/model.json"
 LOGR="$ROOT/馬情報/予想と結果_レース.csv"; LOGH="$ROOT/馬情報/予想と結果_馬ごと.csv"
-mkdir -p "$OUT/races" "$OUT/updates" "$OUT/tmp" "$ROOT/馬情報/振り返り"
+mkdir -p "$OUT/races" "$OUT/updates" "$OUT/tmp" "$ROOT/馬情報/振り返り" "$ROOT/馬情報/今日のまとめ"
 : > "$OUT/manifest.tsv"
 UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
 get() { curl -sSL -A "$UA" -H "Accept-Language: ja" -o "$2" "https://www.keibalab.jp/db/race/$1"; sleep 1.5; }
@@ -85,6 +85,10 @@ declare -A PLACE=( [04]=新潟 [05]=東京 [08]=京都 [06]=中山 [09]=阪神 [
 [ -f "$LOGH" ] || echo "raceId,date,place,surface,dist,grade,name,style,umaban,heads,jisseki,kyori,course,choshi,kishu,odds,predRank,rank,pop" > "$LOGH"
 # 当日のトラックバイアス用(終わったレースの全着順。bias.pl が読む)
 BIASF="$ROOT/馬情報/当日バイアス.tsv"
+# 1日のまとめ(daily.pl)用の記録: 標準の複勝の買い目と払戻・印と全券種の払戻
+BUYF="$ROOT/馬情報/買い目の記録.csv"; MARKF="$ROOT/馬情報/印と払戻.csv"
+[ -s "$BUYF" ] || echo "date,raceId,place,no,name,umaban,horse,tan,fukuLo,ev,pay" > "$BUYF"
+[ -s "$MARKF" ] || echo "date,raceId,place,no,name,grade,star,honmei,taikou,tanana,renka,pop1,pop2,pop3,pay" > "$MARKF"
 [ -f "$BIASF" ] || printf 'date\tplace\tsurface\traceId\tumaban\theads\tlast4\trank\tpop\tsireType\n' > "$BIASF"
 
 # dbにあるレースを (日付 場所 R) → ファイル で引けるようにする
@@ -192,9 +196,42 @@ for off in -1 $(seq 0 "${AHEAD:-6}"); do
           my $p = JSON::PP->new->utf8->decode(do { local $/; open my $h, "<:raw", $pf; <$h> }); $p = $p->{data} if ref $p->{data} eq "HASH";
           my $r = JSON::PP->new->utf8->decode(do { local $/; open my $h, "<:raw", $rf; <$h> });
           my %st = map { $_->{name} => ($_->{sireType} // "") } @{$p->{horses} || []};
+          my $i = 0; my %pp = map { $_->{name} => ++$i } sort { $a->{odds} <=> $b->{odds} } grep { !$_->{scratched} && ($_->{odds} // "") =~ /^[\d.]+$/ && $_->{odds} > 0 } @{$p->{horses} || []};
           open my $A, ">>:utf8", $out; for my $x (@{$r->{order} || []}) { next unless ($x->{rank} // "") =~ /^\d+$/;
-            print $A join("\t", $p->{date}, $p->{place}, $p->{surface} // "", $id, $x->{umaban} // "", $r->{heads} // "", $x->{last4} // "", $x->{rank}, $x->{pop} // "", $st{$x->{name}} // ""), "\n" }' \
+            print $A join("\t", $p->{date}, $p->{place}, $p->{surface} // "", $id, $x->{umaban} // "", $r->{heads} // "", $x->{last4} // "", $x->{rank}, $x->{pop} // $pp{$x->{name}} // "", $st{$x->{name}} // ""), "\n" }' \
           "$PRED" "$OUT/tmp/res_$ID.json" "$ID" "$BIASF"
+        # 標準の複勝の買い目(ページの fukuPick と同じ: レース前のJRAオッズの Harville 3着以内率 × 複勝下限 ≥ 1.0、下限1.2〜3倍)と本物の払戻を残す
+        #   1日のまとめ(daily.pl)が成績に使う。買う点が無いレースは馬番を空けて1行。オッズか払戻が無いレースは書かない
+        perl -Mutf8 -MJSON::PP -0777 -e 'binmode STDOUT, ":utf8"; my ($pf, $rf, $out) = @ARGV;
+          my $p = JSON::PP->new->utf8->decode(do { local $/; open my $h, "<:raw", $pf; <$h> }); $p = $p->{data} if ref $p->{data} eq "HASH";
+          my $r = JSON::PP->new->utf8->decode(do { local $/; open my $h, "<:raw", $rf; <$h> });
+          my $fk = $p->{fuku}; my $pay = $r->{fuku}; exit 0 unless ref $fk eq "HASH" && ref $pay eq "HASH" && %$fk;
+          exit 0 if $p->{grade} || ($p->{name} // "") =~ /新馬|障害/ || ($p->{surface} // "") =~ /^障/;
+          my %nm = map { (($_->{umaban} // "") => $_) } @{$p->{horses} || []};
+          my @u = grep { ref $fk->{$_} eq "ARRAY" && ($fk->{$_}[0] // 0) >= 1 && !($nm{$_} && $nm{$_}{scratched}) } sort { $a <=> $b } keys %$fk; my $n = @u; exit 0 if $n < 3;
+          my @q = map { 1 / $fk->{$_}[0] } @u; my $s = 0; $s += $_ for @q; @q = map { $_ / $s } @q; my @p3 = (0) x $n;
+          for my $i (0 .. $n - 1) { $p3[$i] += $q[$i]; for my $j (0 .. $n - 1) { next if $j == $i; my $pij = $q[$i] * $q[$j] / (1 - $q[$i]); $p3[$j] += $pij;
+            for my $k (0 .. $n - 1) { next if $k == $i || $k == $j; $p3[$k] += $pij * $q[$k] / (1 - $q[$i] - $q[$j]) } } }
+          my @pick = sort { $b->[3] <=> $a->[3] } grep { $_->[2] >= 1.2 && $_->[2] < 3 && $_->[3] >= 1.0 } map { [$u[$_], $fk->{$u[$_]}[0], $fk->{$u[$_]}[1] // 0, $p3[$_] * ($fk->{$u[$_]}[1] // 0)] } 0 .. $n - 1;
+          open my $A, ">>:utf8", $out; my @base = ($p->{date}, $ARGV[3], $p->{place}, $p->{no}, $p->{name} // "");
+          print $A join(",", @base, "", "", "", "", "", ""), "\n" unless @pick;
+          for my $x (@pick) { (my $hn = $nm{$x->[0]} ? $nm{$x->[0]}{name} : "") =~ s/,/、/g; print $A join(",", @base, $x->[0], $hn, $x->[1], $x->[2], sprintf("%.2f", $x->[3]), $pay->{$x->[0]} // 0), "\n" }' \
+          "$PRED" "$OUT/tmp/res_$ID.json" "$BUYF" "$DOC"
+        # 印(◎○▲△の馬番)・人気上位3頭・全券種の払戻を残す。1日のまとめが「印どおりに買っていたら」の成績を出す
+        #   払戻は「券種:組番=円 組番=円;…」(100円あたり)。払戻が取れなかったレース(スポーツナビの結果など)は書かない
+        perl -Mutf8 -MJSON::PP -0777 -e 'binmode STDOUT, ":utf8"; my ($pf, $rf, $vf, $out, $doc) = @ARGV;
+          my $p = JSON::PP->new->utf8->decode(do { local $/; open my $h, "<:raw", $pf; <$h> }); $p = $p->{data} if ref $p->{data} eq "HASH";
+          my $r = JSON::PP->new->utf8->decode(do { local $/; open my $h, "<:raw", $rf; <$h> }); my $pay = $r->{pay}; exit 0 unless ref $pay eq "HASH" && %$pay;
+          my $v = JSON::PP->new->utf8->decode(do { local $/; open my $h, "<:raw", $vf; <$h> })->{review};
+          my %ban = map { $_->{name} => ($_->{umaban} // "") } @{$p->{horses} || []}; my %mk;
+          for my $m (@{$v->{marks} || []}) { push @{$mk{$m->{mark}}}, $ban{$m->{name}} // "" }
+          my $i = 0; my %pp = map { $_->{name} => ++$i } sort { $a->{odds} <=> $b->{odds} } grep { !$_->{scratched} && ($_->{odds} // "") =~ /^[\d.]+$/ && $_->{odds} > 0 } @{$p->{horses} || []};
+          my %bypop; for my $o (@{$r->{order} || []}) { my $q = $o->{pop} // $pp{$o->{name}}; $bypop{$q} = $o->{umaban} if $q && $q <= 3 }
+          (my $nm = $p->{name} // "") =~ s/,/、/g;
+          my $ps = join(";", map { my $t = $_; "$t:" . join(" ", map { "$_=$pay->{$t}{$_}" } sort keys %{$pay->{$t}}) } sort keys %$pay);
+          open my $A, ">>:utf8", $out; print $A join(",", $p->{date}, $doc, $p->{place}, $p->{no}, $nm, $p->{grade} // "", $p->{star} ? 1 : 0,
+            (map { join(" ", @{$mk{$_} || []}) } qw(◎ ○ ▲ △)), (map { $bypop{$_} // "" } 1 .. 3), $ps), "\n"' \
+          "$PRED" "$OUT/tmp/res_$ID.json" "$OUT/tmp/rev_$ID.json" "$MARKF" "$DOC"
         # 振り返りを日ごとのファイルにも残す
         perl -Mutf8 -MJSON::PP -0777 -e 'binmode STDOUT, ":utf8"; my ($pf, $rf) = @ARGV;
           my $p = JSON::PP->new->utf8->decode(do { local $/; open my $h, "<:raw", $pf; <$h> }); $p = $p->{data} if ref $p->{data} eq "HASH";
@@ -202,7 +239,8 @@ for off in -1 $(seq 0 "${AHEAD:-6}"); do
           print "\n## $p->{place}$p->{no}R $p->{name}" . ($p->{grade} ? " ($p->{grade})" : "") . ($p->{star} ? " ★" : "") . "\n";
           print "- 予想: " . join(" ", map { "$_->{mark}$_->{name}(" . ($_->{rank} // "?") . "着)" } @{$v->{marks}}) . "\n";
           print "- 結果: " . join(" ", map { "$_->{rank}着 $_->{name}(" . ($_->{pop} // "?") . "番人気・予想" . ($_->{predRank} // "?") . "位)" } @{$v->{top3}}) . "\n";
-          print "- 違った点: " . join(" / ", @{$v->{diff}}) . "\n- 次への改善: " . join(" / ", @{$v->{next}}) . "\n"' \
+          print "- 違った点: " . join(" / ", @{$v->{diff}}) . "\n- 次への改善: " . join(" / ", @{$v->{next}}) . "\n";
+          print "- レースの細部:\n" . join("", map { "  - $_\n" } @{$v->{detail}}) if $v->{detail} && @{$v->{detail}}' \
           "$PRED" "$OUT/tmp/rev_$ID.json" >> "$ROOT/馬情報/振り返り/$DISO.md.tmp"
       fi
     done
@@ -210,8 +248,15 @@ for off in -1 $(seq 0 "${AHEAD:-6}"); do
 done
 # 日ごとの振り返りファイルにまとめる
 mkdir -p "$ROOT/馬情報/振り返り"
-for t in "$ROOT"/馬情報/振り返り/*.md.tmp; do [ -e "$t" ] || continue; f="${t%.tmp}"; [ -f "$f" ] || echo "# $(basename "$f" .md) の予想の振り返り" > "$f"; cat "$t" >> "$f"; rm -f "$t"; done 2>/dev/null
+NEWDAYS=""
+for t in "$ROOT"/馬情報/振り返り/*.md.tmp; do [ -e "$t" ] || continue; f="${t%.tmp}"; NEWDAYS="$NEWDAYS $(basename "$f" .md)"; [ -f "$f" ] || echo "# $(basename "$f" .md) の予想の振り返り" > "$f"; cat "$t" >> "$f"; rm -f "$t"; done 2>/dev/null
 # 重みと★の基準を最適化
+cp "$MODEL" "$OUT/model_before.json" 2>/dev/null
 perl "$HERE/optimize.pl" "$LOGH" "$LOGR" "$MODEL" > "$OUT/model.json" && cp "$OUT/model.json" "$MODEL"
 printf 'model\tconfig/model\t%s\n' "$OUT/model.json" >> "$OUT/manifest.tsv"
+# 結果が増えた日の「1日のまとめと反省点」を作り直す(馬情報/今日のまとめ/<日付>.md。Claudeが書いた反省の欄は残す)と、成績の推移
+for d in $NEWDAYS; do
+  perl "$HERE/daily.pl" "$d" "$ROOT/馬情報" "$OUT/model_before.json" "$MODEL" > "$OUT/tmp/daily_$d.md" && mv "$OUT/tmp/daily_$d.md" "$ROOT/馬情報/今日のまとめ/$d.md"
+done
+[ -n "$NEWDAYS" ] && perl "$HERE/daily.pl" trend "$ROOT/馬情報" > "$ROOT/馬情報/今日のまとめ/成績の推移.md"
 echo "manifest: $(wc -l < "$OUT/manifest.tsv") 件"; cut -f1 "$OUT/manifest.tsv" | sort | uniq -c

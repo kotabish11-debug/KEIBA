@@ -174,14 +174,18 @@ if ($cmd eq 'result') {
     my ($rank, $waku, $ban, $nm, $tm, $pass, $jk, $po) = @c;
     next unless defined $ban && $ban =~ /^\d+$/ && $rank =~ /^\d+$|^(取消|除外|中止|失格)$/;
     my ($name) = $nm =~ /^(\S+)/; $name =~ s/^(?:[\(（\[［][^\)）\]］]{1,2}[\)）\]］]|[□○◇☆▲△])+//;
-    my @pos = grep { /^\d+$/ } split /-/, (($pass // '') =~ /^([\d\-]+)/ ? $1 : '');
-    my ($f3) = ($pass // '') =~ /\s([\d.]+)$/; my ($pop, $odds) = ($po // '') =~ /^(\d+)\s*\(\s*([\d.]+)\s*\)/;
+    # 通過順の欄: 「3-2 37.4」(通過順と上がり)。2026-10 からは上がりだけ「37.4」のことがあり、それを通過順と読まない
+    my @pos = grep { /^\d+$/ } split /-/, (($pass // '') =~ /^(\d+(?:-\d+)*)(?:\s|$)/ ? $1 : '');
+    my ($f3) = ($pass // '') =~ /(?:^|\s)(\d{2}\.\d)$/;
+    # 人気の欄: 「1 (2.3)」。人気が「-」でオッズだけのことがあり、そのときは下でオッズの順から人気を付ける
+    my ($pop) = ($po // '') =~ /^(\d+)\s*\(/; my ($odds) = ($po // '') =~ /\(\s*([\d.]+)\s*\)/;
     my ($time) = ($tm // '') =~ /^(\d+:\d{2}\.\d)/; (my $j = $jk // '') =~ s/\s*[▲△☆◇★]?[\d.]+$//; $j =~ s/\s+//g;
     push @order, { rank => ($rank =~ /^\d+$/ ? $rank + 0 : $rank), umaban => $ban + 0, name => $name, jockey => $j,
       pop => (defined $pop ? $pop + 0 : undef), odds => (defined $odds ? $odds + 0 : undef),
       pass => join('-', @pos), last4 => (@pos ? $pos[-1] + 0 : undef), f3 => $f3, time => $time };
   }
   exit 2 unless grep { ($_->{rank} // '') =~ /^\d+$/ } @order;
+  unless (grep { defined $_->{pop} } @order) { my $i = 0; $_->{pop} = ++$i for sort { $a->{odds} <=> $b->{odds} } grep { $_->{odds} } @order }
   print JSON::PP->new->canonical->pretty->encode({ heads => scalar(@order), order => \@order });
   exit 0;
 }
