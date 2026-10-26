@@ -191,9 +191,9 @@ if ($cmd eq 'result') {
   my $h = slurp(shift); my @order;
   my ($tb) = $h =~ /<tbody>(.*?)<\/tbody>/s or exit 2;
   # 単勝の払戻(勝ち馬のオッズ)
-  my %win; if ($h =~ /<li class="win">(.*?)<\/li>/s) { my $w = $1; while ($w =~ /<div class="num">(\d+)<\/div>\s*<div class="yen">([\d,]+)/g) { (my $y = $2) =~ s/,//g; $win{$1} = $y / 100 } }
+  my %win; if ($h =~ /<li class="win">(.*?)<\/li>/s) { my $w = $1; while ($w =~ /<div class="num">(\d+)<\/div>\s*<div class="yen">([\d,]+)/g) { my ($n, $y) = ($1, $2); $y =~ s/,//g; $win{$n} = $y / 100 } }
   # 複勝の払戻(100円あたりの円。1日のまとめで買い目の成績に使う)
-  my %fuku; if ($h =~ /<li class="place">(.*?)<\/li>/s) { my $w = $1; while ($w =~ /<div class="num">(\d+)<\/div>\s*<div class="yen">([\d,]+)/g) { (my $y = $2) =~ s/,//g; $fuku{$1} = $y + 0 } }
+  my %fuku; if ($h =~ /<li class="place">(.*?)<\/li>/s) { my $w = $1; while ($w =~ /<div class="num">(\d+)<\/div>\s*<div class="yen">([\d,]+)/g) { my ($n, $y) = ($1, $2); $y =~ s/,//g; $fuku{$n} = $y + 0 } }
   # 全券種の払戻 { 券種 => { 組番 => 円(100円あたり) } }。組番は馬単・3連単だけ着順どおり、ほかはページの表記どおり
   my %pay; while ($h =~ /<li class="\w+">\s*<dl>\s*<dt>([^<]+)<\/dt>(.*?)<\/dl>/sg) { my ($t, $b) = ($1, $2); $t =~ s/\s+//g;
     while ($b =~ /<div class="num">([\d\-]+)<\/div>\s*<div class="yen">([\d,]+)/g) { my ($k, $y) = ($1, $2); $y =~ s/,//g; $pay{$t}{$k} = $y + 0 } }
@@ -204,19 +204,34 @@ if ($cmd eq 'result') {
     my ($jk) = $r =~ /<td class="jockey">(.*?)<\/td>/s; $jk = txt($jk); $jk =~ s/[\s▲△☆◇★]//g;
     my @pos = $r =~ /<li title="\dコーナー通過順位">(\d+)<\/li>/g;
     my ($f3) = $r =~ /<td class="f_time">\s*([\d.]+)/; my ($time) = $r =~ /<td class="time">\s*(\d+:\d{2}\.\d)/; my ($pop) = $r =~ /<td class="pop">\s*(\d+)/;
-    my ($mg) = $r =~ /<td class="margin">(.*?)<\/td>/s; $mg = z2h(txt($mg)); my ($bw, $bwd) = $r =~ /<td class="h_weight">\s*(\d+)\s*<span>\(([+\-]?\d+)\)/;
+    my ($mg) = $r =~ /<td class="margin">(.*?)<\/td>/s; $mg = z2h(txt($mg)); my ($bw, $bwd) = $r =~ /<td class="h_weight">\s*(\d+)\s*(?:<span>)?\(([+\-]?\d+)?/;   # 初出走は (初出走) で増減なし
+    # 2026-10-26〜 スピード指数などの検証用: 枠・性齢・斤量・調教師・馬のID(馬DBの id と同じ)・ブリンカー
+    my ($wk) = $r =~ /<td class="waku">.*?alt="枠(\d)/s; my ($sa) = $r =~ /<td class="age">\s*([^<]*?)\s*</; my ($kin) = $r =~ /<td class="weight">\s*([\d.]+)/;
+    my ($tr) = $r =~ /<td class="trainer">(.*?)<\/td>/s; $tr = txt($tr); $tr =~ s/\s//g; my ($hid) = $r =~ /accessU\.html\?CNAME=pw01dud\d{2}(\d{10})\//;
     $rank = $1 if $rank =~ /(取消|除外|中止|失格)/;
     next unless $rank =~ /^\d+$|^(取消|除外|中止|失格)$/;
     push @order, { rank => ($rank =~ /^\d+$/ ? $rank + 0 : $rank), umaban => $ban + 0, name => $name, jockey => $jk,
       pop => (defined $pop ? $pop + 0 : undef), odds => $win{$ban}, pass => join('-', @pos), last4 => (@pos ? $pos[-1] + 0 : undef), f3 => $f3, time => $time,
-      margin => $mg, bw => (defined $bw ? $bw + 0 : undef), bwDiff => (defined $bwd ? $bwd + 0 : undef) };
+      margin => $mg, bw => (defined $bw ? $bw + 0 : undef), bwDiff => (defined $bwd ? $bwd + 0 : undef),
+      (defined $wk ? (waku => $wk + 0) : ()), (defined $sa && $sa ne '' ? (sexAge => $sa) : ()), (defined $kin ? (kin => $kin + 0) : ()),
+      ($tr ne '' ? (trainer => $tr) : ()), ($hid ? (horseId => $hid) : ()), ($r =~ /ブリンカー着用/ ? (blinker => JSON::PP::true) : ()) };
   }
   exit 2 unless grep { ($_->{rank} // '') =~ /^\d+$/ } @order;
   # レースの細部: ハロンタイム・上り3F・競走中の出来事(出遅れ・不利など)
   my ($lap) = $h =~ /ハロンタイム<\/th>\s*<td>([^<]+)/; my @laps = map { $_ + 0 } ($lap // '') =~ /([\d.]+)/g;
   my ($up) = $h =~ /上り<\/th>\s*<td>([^<]+)/; my ($up3) = ($up // '') =~ /3F\s*([\d.]+)/;
   my @ev; if ($h =~ /競走中の出来事等<\/h3>(.*?)<\/ul>/s) { my $e = $1; push @ev, map { txt($_) } $e =~ /<span class="txt">(.*?)<\/span>/sg }
-  print JSON::PP->new->canonical->pretty->encode({ heads => scalar(@order), order => \@order,
+  # レースの条件(2026-10-26〜 jra_history.sh のスピード指数用): 距離・コース(芝/ダート/障害・内外)・馬場・天候・クラス・負担重量の種類
+  my %rc; if ($h =~ /class="cell course">(.*?)<\/div>/s) { my $c = $1; my ($d) = $c =~ /([\d,]+)\s*<span class="unit">/; ($rc{dist} = $d // '') =~ s/,//g; $rc{dist} += 0 if $rc{dist} ne '';
+    my ($dt) = $c =~ /class="detail">\s*[（(]([^）)]*)/; if (defined $dt) { $dt =~ s/&rarr;/→/g; $rc{course} = $dt }
+    # 障害はコースが「芝→ダート」などなので、レースの種類(障害3歳以上 など)で見分ける
+    $rc{surface} = $h =~ /class="cell category">[^<]*障害/ ? '障' : !defined $dt ? '' : $dt =~ /^ダ/ ? 'ダ' : $dt =~ /^芝/ ? '芝' : '' }
+  if ($h =~ /class="cell baba">(.*?)<\/ul>/s) { my $b = $1; ($rc{weather}) = $b =~ /class="weather">.*?class="txt">([^<]*)/s;
+    my @g; while ($b =~ /<li class="(turf|durt)">.*?class="txt">([^<]*)/sg) { push @g, [$1, $2] }
+    my ($m) = grep { $_->[0] eq (($rc{surface} // '') eq 'ダ' ? 'durt' : 'turf') } @g; $rc{going} = ($m // $g[0] // [])->[1] }
+  for my $k (qw(class weight)) { if ($h =~ /class="cell $k">\s*([^<]*?)\s*</) { $rc{$k eq 'weight' ? 'kinType' : 'cls'} = $1 } }
+  delete $rc{$_} for grep { !defined $rc{$_} || $rc{$_} eq '' } keys %rc;
+  print JSON::PP->new->canonical->pretty->encode({ heads => scalar(@order), order => \@order, (%rc ? (race => \%rc) : ()),
     (@laps ? (laps => \@laps) : ()), ($up3 ? (last3f => $up3 + 0) : ()), (@ev ? (events => \@ev) : ()), (%fuku ? (fuku => \%fuku) : ()), (%pay ? (pay => \%pay) : ()) });
   exit 0;
 }
