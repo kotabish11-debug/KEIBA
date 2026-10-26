@@ -120,6 +120,20 @@ my %STYPE; { (my $dir = __FILE__) =~ s{[\\/][^\\/]*$}{}; $dir = '.' if $dir eq _
   my $tf = "$dir/../../馬情報/種牡馬_国別タイプ.tsv"; utf8::encode($tf);
   local $/ = "\n"; if (open my $th, '<:encoding(UTF-8)', $tf) { <$th>; while (my $l = <$th>) { chomp $l; $l =~ s/\r$//; my ($s, $t, $sub, $cf) = split /\t/, $l; $STYPE{$s} = $t if $s && $t && $t ne '?' && ($cf // '') ne '?' } } }
 my %SIRE_US = map { $_ => 1 } grep { $STYPE{$_} eq '米国' } keys %STYPE;
+# 騎手の連対率の表(jockey_table.pl が全期間のデータから作る)。JRA公式・スポーツナビには騎手のコース連対率が無いので、これで騎手の点を作る
+my (%JT, %JCT, $JG); { (my $dir = __FILE__) =~ s{[\\/][^\\/]*$}{}; $dir = '.' if $dir eq __FILE__; utf8::decode($dir);
+  my $tf = "$dir/jockey.tsv"; utf8::encode($tf);
+  local $/ = "\n"; if (open my $th, '<:encoding(UTF-8)', $tf) { while (my $l = <$th>) { chomp $l; $l =~ s/\r$//; my @c = split /\t/, $l;
+    if ($c[0] eq 'G') { $JG = $c[1] } elsif ($c[0] eq 'J') { $JT{$c[1]} = [@c[2, 3]] } elsif ($c[0] eq 'C') { $JCT{$c[1]}{$c[2]} = [@c[3, 4]] } } } }
+# ベイズ推定: 騎手の前の365日の連対率を全騎手の平均へ K=10回ぶん寄せ、そのコースの前の3年の連対率をその値へ k=200回ぶん寄せる。点は logit の差×18
+#   (YouTube「はじめての統計学」のベイズ推定の回。2017〜2021で当てはめ、2022〜2026/3 の21万頭で、オッズ無しの勝ち馬の当たり方が
+#    今の「コースの率をそのまま」の1.8倍。オッズがあるときの上乗せは0 = 騎手は市場に織り込み済み。自動実行/検証/jockey_eb.pl、馬情報/的中率を上げるための検証.md の18)
+sub jockey_eb { my ($jk, $ck) = @_; return undef unless $JG; $jk =~ s/[\s▲△☆◇★]//g; $jk =~ s/^[A-Za-zＡ-Ｚａ-ｚ][.．]//;
+  my $key = exists $JT{$jk} ? $jk : undef;
+  unless ($key) { my @m = grep { index($_, $jk) == 0 || index($jk, $_) == 0 } keys %JT; $key = $m[0] if @m == 1 }
+  my ($N, $W) = $key ? @{$JT{$key}} : (0, 0); my ($n, $w) = $key && $JCT{$key}{$ck} ? @{$JCT{$key}{$ck}} : (0, 0);
+  my $m = ($W + 10 * $JG) / ($N + 10); my $r = ($w + 200 * $m) / ($n + 200);
+  my $lg = sub { log($_[0] / (1 - $_[0])) }; return clamp(int(69 + 18 * ($lg->($r) - $lg->($JG)) + 0.5), 50, 95) }
 # 母父(馬名の後に並ぶ「(母父)」)
 my %damsire; { my $cur; while ($nm =~ /data-hsnm="([^"]+)"|class="tategaki hahachichi[^"]*">\s*(.*?)\s*<\/p>/sg) { if (defined $1) { $cur = $1 } elsif ($cur && !exists $damsire{$cur}) { (my $d = txt($2)) =~ s/[()（）]//g; $d =~ s/’/'/g; $damsire{$cur} = $d } } }
 # 脚質マーク(逃・先・差・追の順に▲が付く)
@@ -176,6 +190,7 @@ for my $i (0 .. $n - 1) {
   if (defined $wk) { $choshi -= 1 if $wk == 1 }
   my ($jr, $jn) = ($jc[$i] // '') =~ /([\d.]+)%\s*\[(\d+)\]/;
   my $kishu = (defined $jn && $jn >= 5) ? clamp(int(58 + 0.8 * $jr + 0.5), 55, 92) : 66;
+  $kishu = jockey_eb($jockey[$i] // '', "$place$surf$dist") // $kishu if !defined $jn;
   # 脚質: 前走の4角位置の平均。無ければ脚質マーク
   my @ratios = map { $_->{last} / $_->{heads} } grep { $_->{last} && $_->{heads} } @$z;
   my $style;

@@ -25,6 +25,11 @@ if [ -z "$SOURCE" ]; then
   curl -sS -m 20 -o /dev/null -A "$UA" https://www.jra.go.jp/ 2>/dev/null || { sleep 10; curl -sS -m 20 -o /dev/null -A "$UA" https://www.jra.go.jp/ 2>/dev/null; } || SOURCE=yahoo
 fi
 echo "取得元: $SOURCE"
+# 騎手の連対率の表(race_json.pl が騎手の点に使う)は、全期間のデータがあるPCで1日1回作り直す(クラウドはコミットされた表を使う)
+FULL="$ROOT/馬情報/過去レースデータ/全期間"; JT="$HERE/jockey.tsv"
+if [ -s "$FULL/$(date +%Y)/JRA詳細.jsonl" ] && [ "$(date -r "$JT" +%F 2>/dev/null)" != "$(date +%F)" ]; then
+  perl "$HERE/jockey_table.pl" "$FULL" > "$OUT/tmp/jockey.tsv" 2>/dev/null && [ "$(wc -l < "$OUT/tmp/jockey.tsv")" -gt 100 ] && mv "$OUT/tmp/jockey.tsv" "$JT" && echo "騎手の表を作り直した"
+fi
 YBUDGET="${YBUDGET:-300}"; YSTART=$SECONDS; HC="$OUT/hc"; mkdir -p "$HC"
 yget() { curl -sSL -A "$UA" -o "$2" "https://sports.yahoo.co.jp/keiba/$1"; sleep 0.3; }
 # 日付と場コード → スポーツナビの開催ID(8桁: 年2+場2+回2+日2)を YK に入れる(月の日程ページから引く)
