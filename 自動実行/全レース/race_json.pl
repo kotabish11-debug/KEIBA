@@ -134,6 +134,11 @@ sub jockey_eb { my ($jk, $ck) = @_; return undef unless $JG; $jk =~ s/[\s▲△�
   my ($N, $W) = $key ? @{$JT{$key}} : (0, 0); my ($n, $w) = $key && $JCT{$key}{$ck} ? @{$JCT{$key}{$ck}} : (0, 0);
   my $m = ($W + 10 * $JG) / ($N + 10); my $r = ($w + 200 * $m) / ($n + 200);
   my $lg = sub { log($_[0] / (1 - $_[0])) }; return clamp(int(69 + 18 * ($lg->($r) - $lg->($JG)) + 0.5), 50, 95) }
+# 1年前の好走の表(season_table.pl が全期間のデータから作る): 馬名 → 3着以内の日付。「得意な季節」の補正に使う
+my %SEASON; { (my $dir = __FILE__) =~ s{[\\/][^\\/]*$}{}; $dir = '.' if $dir eq __FILE__; utf8::decode($dir);
+  my $tf = "$dir/season.tsv"; utf8::encode($tf);
+  local $/ = "\n"; if (open my $th, '<:encoding(UTF-8)', $tf) { while (my $l = <$th>) { chomp $l; $l =~ s/\r$//; my ($nmx, $ds) = split /\t/, $l; $SEASON{$nmx} = [split /,/, $ds // ''] if $nmx } } }
+sub days { my ($y, $m, $d) = split /-/, shift; my $a = int((14 - $m) / 12); my $yy = $y + 4800 - $a; my $mm = $m + 12 * $a - 3; $d + int((153 * $mm + 2) / 5) + 365 * $yy + int($yy / 4) - int($yy / 100) + int($yy / 400) }
 # 母父(馬名の後に並ぶ「(母父)」)
 my %damsire; { my $cur; while ($nm =~ /data-hsnm="([^"]+)"|class="tategaki hahachichi[^"]*">\s*(.*?)\s*<\/p>/sg) { if (defined $1) { $cur = $1 } elsif ($cur && !exists $damsire{$cur}) { (my $d = txt($2)) =~ s/[()（）]//g; $d =~ s/’/'/g; $damsire{$cur} = $d } } }
 # 脚質マーク(逃・先・差・追の順に▲が付く)
@@ -377,6 +382,15 @@ for my $i (0 .. $n - 1) {
     if ($r == 1 && ($p->{surf} // '') eq $surf && $surf ne '障' && $p->{first} && ($p->{pace} // '') =~ /^[HS]$/ && ($p->{first} <= 3) == ($p->{pace} eq 'H')) {
       $adj -= 1; push @why, '前走は展開に逆らって勝った(人気しすぎ)' }
     # 専用機の巻き返し(カチウマ博士)・ラップの型(丞相)・1角まで長い距離の差しは、2017年以降 0.91・1.01・0.77倍(逆か差なし)で外した
+    # 季節(YouTube「競馬予想で始めるデータ分析」の「馬の得意な季節」「性別×季節」。出典: 馬情報/競馬予想で始めるデータ分析_動画まとめ.md)。
+    #   2017〜2026/3 の平場で確かめ、多重検定(BH q=0.1)を通り前半・後半とも同じ向き(馬情報/的中率を上げるための検証.md の19):
+    #   冬(12〜2月)の牝馬(牝馬限定戦以外)0.88倍 -2・夏(6〜8月)の牝馬 1.08倍 +1、1年前の同じ時期(320〜410日前)に3着以内で近5走は4着以下 1.15倍 +2
+    my ($sx) = ($sexage[$i] // '') =~ /^(牝)/; my $hinba_only = !grep { ($_ // '') !~ /^牝/ } @sexage;
+    if ($sx && !$hinba_only && $surf ne '障') {
+      if ($mo == 12 || $mo <= 2) { $adj -= 2; push @why, '冬の牝馬' } elsif ($mo >= 6 && $mo <= 8) { $adj += 1; push @why, '夏の牝馬' } }
+    if ($date && $SEASON{$name} && $surf ne '障' && !grep { ($_->{rank} // 99) <= 3 } @$z) {
+      my $dn0 = days($date); my ($hit) = grep { my $g = $dn0 - days($_); $g >= 320 && $g <= 410 } @{$SEASON{$name}};
+      if ($hit) { $adj += 2; push @why, "1年前の同じ時期に好走(${\ substr($hit, 0, 7)})" } }
     $adj = clamp($adj, -5, 5);   # いくつ重なっても補正は±5まで
     if ($adj) { $hh{choshi} = clamp($hh{choshi} + $adj, 40, 95); my $w = join('・', @why); $hh{note} =~ s/(\(自動計算\))$/・${w}(${\($adj > 0 ? '+' : '')}$adj)$1/ }
   }

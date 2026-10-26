@@ -30,6 +30,11 @@ FULL="$ROOT/馬情報/過去レースデータ/全期間"; JT="$HERE/jockey.tsv"
 if [ -s "$FULL/$(date +%Y)/JRA詳細.jsonl" ] && [ "$(date -r "$JT" +%F 2>/dev/null)" != "$(date +%F)" ]; then
   perl "$HERE/jockey_table.pl" "$FULL" > "$OUT/tmp/jockey.tsv" 2>/dev/null && [ "$(wc -l < "$OUT/tmp/jockey.tsv")" -gt 100 ] && mv "$OUT/tmp/jockey.tsv" "$JT" && echo "騎手の表を作り直した"
 fi
+# 1年前の好走の表(race_json.pl の「1年前の同じ時期に好走」の補正に使う)も同じく PC で1日1回
+ST="$HERE/season.tsv"
+if [ -s "$FULL/$(date +%Y)/JRA詳細.jsonl" ] && [ "$(date -r "$ST" +%F 2>/dev/null)" != "$(date +%F)" ]; then
+  perl "$HERE/season_table.pl" "$FULL" > "$OUT/tmp/season.tsv" 2>/dev/null && [ "$(wc -l < "$OUT/tmp/season.tsv")" -gt 1000 ] && mv "$OUT/tmp/season.tsv" "$ST" && echo "1年前の好走の表を作り直した"
+fi
 YBUDGET="${YBUDGET:-300}"; YSTART=$SECONDS; HC="$OUT/hc"; mkdir -p "$HC"
 yget() { curl -sSL -A "$UA" -o "$2" "https://sports.yahoo.co.jp/keiba/$1"; sleep 0.3; }
 # 日付と場コード → スポーツナビの開催ID(8桁: 年2+場2+回2+日2)を YK に入れる(月の日程ページから引く)

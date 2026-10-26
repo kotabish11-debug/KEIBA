@@ -133,6 +133,10 @@ my @F = (
   ['坂井騎手の差し馬', -1, '騎手', sub { $_[1]{jockey} =~ /^坂井/ && $_[3]{style} eq '差し' }],
   ['坂井騎手の500kg以上', 1, '騎手', sub { $_[1]{jockey} =~ /^坂井/ && ($_[1]{bw} // 0) >= 500 }],
   ['松山騎手の外枠の差し・追込', -1, '騎手', sub { $_[1]{jockey} =~ /^松山/ && $_[3]{outer} && $_[3]{style} =~ /差し|追込/ }],
+  # 季節(YouTube「競馬予想で始めるデータ分析」。2026-10-27 に2017〜2026/3で確かめて入れた。検証.md の19)
+  [q(冬(12〜2月)の牝馬・牝馬限定戦以外), -2, q(データ分析), sub { my ($c, $h) = @_; ($c->{mo} == 12 || $c->{mo} <= 2) && $c->{cond} !~ /牝/ && ($h->{sexAge} // q()) =~ /^牝/ }],
+  [q(夏(6〜8月)の牝馬・牝馬限定戦以外), 1, q(データ分析), sub { my ($c, $h) = @_; ($c->{mo} >= 6 && $c->{mo} <= 8) && $c->{cond} !~ /牝/ && ($h->{sexAge} // q()) =~ /^牝/ }],
+  [q(1年前の同じ時期に3着以内・近5走は4着以下), 2, q(データ分析), sub { $_[3]{season} && !grep { ($_->{rank} // 99) <= 3 } @{$_[2]} }],
 );
 # 新馬は過去走が無いので「新馬で馬体重」は別に見る
 my @NF = (
@@ -159,7 +163,8 @@ for my $r (@races) {
       my $o = $od->{$h->{umaban} // 0} or next; next unless $si;
       my $z = [reverse @{$hist{$h->{horseId} // ''} || []}]; $z = [@{$z}[0 .. 4]] if @$z > 5; $z = [grep { defined } @$z];
       my $win = (($h->{rank} // '') =~ /^\d+$/ && $h->{rank} == 1) ? 1 : 0;
-      push @rows, { h => $h, z => $z, p => (1 / $o) / $si, win => $win, odds => $o };
+      my $dn = days($r->{date}); my $sea = grep { my $g = $dn - days($_->{date}); $g >= 320 && $g <= 410 && ($_->{rank} // 99) <= 3 } @{$hist{$h->{horseId} // q()} || []};
+      push @rows, { h => $h, z => $z, sea => $sea, p => (1 / $o) / $si, win => $win, odds => $o };
     }
     # レース全体で要る値: 逃げ馬の数・前走1角3番手以内の割合・減量
     my %v;
@@ -177,7 +182,7 @@ for my $r (@races) {
         for my $p (@$z) { next unless $p->{surf} eq 'ダ' && $p->{umaban} && $p->{heads} && $p->{last} && $p->{rank}; next unless $p->{umaban} <= $p->{heads} * 0.4 && $p->{last} > $p->{heads} * 0.3;
           if ($p->{rank} <= 3 || ($p->{margin} // 9) <= 0.3) { $t++ } elsif ($p->{rank} >= 6 && ($p->{margin} // 0) >= 0.6) { $wk++ } }
         $w{sand} = ($t && $c->{cls} =~ /3勝|オープン/) ? 'tough' : (!$t && $wk && $w{inner}) ? 'weak' : '' }
-      $x->{v} = \%w;
+      $w{season} = $x->{sea}; $x->{v} = \%w;
     }
     $c->{leaders} = grep { $_->{v}{style} eq '逃げ' } @rows;
     my @pf = grep { defined $_->{v}{prevFront} } @rows; $c->{fr} = (@pf >= @rows * 0.7 && @rows >= 8) ? (grep { $_->{v}{prevFront} } @pf) / @pf : undef;
