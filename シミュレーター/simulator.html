@@ -846,7 +846,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
           <button type="button" class="btn" id="jpOpen">このレースの予想を開く</button>
         </div>
         <p class="verdict" id="jpVerdict">計算の準備をしています…</p>
-        <div class="notice"><b>夢を買う馬券です。</b>3連単・3連複・馬単・馬連は払戻率が72.5〜77.5%と低く、2026年4〜10月の平場1,868レースではシミュレーターの期待値で選んでも回収率70%台以下でした。重賞は検証していません。長く続けると損をしやすいので、「1日の予算」「資金」とは別の、なくなってもよいお金で買ってください。</div>
+        <div class="notice"><b>夢を買う馬券です。</b>3連単・3連複・馬単・馬連は払戻率が72.5〜77.5%と低く、2026年4〜10月の平場1,868レースではシミュレーターの期待値で選んでも回収率70%台以下でした。重賞は検証していません。2012〜2026年の4.5万レースでは、人気薄の組ほど回収率が下がり(本命側の組は80%台、単勝オッズから見て3連単1万倍・3連複と馬単1,000倍・馬連500倍以上の組は60%台以下)、シミュレーターの候補からはこの大穴の組を外しています。長く続けると損をしやすいので、「1日の予算」「資金」とは別の、なくなってもよいお金で買ってください。</div>
       </div>
     </section>
     <section class="win" aria-labelledby="h-jpc">
@@ -2796,11 +2796,13 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
   // Claudeの渾身の買い目: db のレースの ikkaku(Claudeが判断材料を読んで書く。形は シミュレーター/レースデータの作り方.md の「一獲千金」)
   const JP_KEY = "keiba-jackpot-v1";
   const JP_BLEND_MAX = 70;
+  // maxFair: 単勝オッズの Harville 式で出した組の推計オッズ(1 ÷ 確率)の上限。2012〜2026年の平場4.5万レースで、これより上の組は前半・後半とも回収率が60%台以下に落ちる
+  // (人気薄の組ほど買われすぎ。小幡・太宰 2014。自動実行/検証/exotic_harville.pl、馬情報/論文まとめ_GoogleScholar競馬.md)
   const JP_RULE = {
-    "3連単": { minOdds: 80, minP: 0.003, max: 6, share: 0.3 },
-    "3連複": { minOdds: 20, minP: 0.006, max: 5, share: 0.3 },
-    "馬単": { minOdds: 15, minP: 0.008, max: 4, share: 0.2 },
-    "馬連": { minOdds: 10, minP: 0.012, max: 4, share: 0.2 }
+    "3連単": { minOdds: 80, minP: 0.003, maxFair: 10000, max: 6, share: 0.3 },
+    "3連複": { minOdds: 20, minP: 0.006, maxFair: 1000, max: 5, share: 0.3 },
+    "馬単": { minOdds: 15, minP: 0.008, maxFair: 1000, max: 4, share: 0.2 },
+    "馬連": { minOdds: 10, minP: 0.012, maxFair: 500, max: 4, share: 0.2 }
   };
   const JP_TYPES = Object.keys(JP_RULE);
   const jp = { id: null, budget: 3000, sim: null, mk: null, tab: null };
@@ -2857,7 +2859,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     const p = (jp.tab[type].get(k) || 0) / jp.sim.N;
     const mp = type === "馬単" ? jp.mk.ex[k] : type === "馬連" ? jp.mk.quin[k] : type === "3連単" ? jp.mk.tri.get(k) : jp.mk.trio.get(k);
     const odds = estOdds(type, mp || 1e-6);
-    return { type, h: hh, p, odds, ev: p * odds };
+    return { type, h: hh, p, odds, ev: p * odds, fair: 1 / (mp || 1e-6) };
   }
   function jpAuto() {
     const n = jp.sim.n;
@@ -2867,7 +2869,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
         if (c / jp.sim.N < R.minP) continue;
         const h = type.charAt(0) === "3" ? [Math.floor(k / (n * n)), Math.floor(k / n) % n, k % n] : [Math.floor(k / n), k % n];
         const b = jpBet(type, h);
-        if (b.odds >= R.minOdds) list.push(b);
+        if (b.odds >= R.minOdds && b.fair < R.maxFair) list.push(b);
       }
       list.sort((a, b) => b.ev * Math.sqrt(b.p) - a.ev * Math.sqrt(a.p));
       return { type, share: R.share, bets: list.slice(0, R.max) };
