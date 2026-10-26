@@ -31,7 +31,8 @@ try {
 
   # 学習データ(週1回。Claudeを使わずスクリプトだけで集める)
   & "C:\Program Files\Git\bin\bash.exe" (Join-Path $here "backfill_weekly.sh") 2>&1 | Out-File -Append -Encoding utf8 $log
-  # 馬DB(全部の競走馬・種牡馬・繁殖牝馬。毎回25分まで。2026-10-26〜。Claudeを使わずスクリプトだけで集める)
+  # 馬DB(全部の競走馬・種牡馬・繁殖牝馬。毎回50分まで。2026-10-26〜。2026-10-27 ユーザー指示「早めたい」で25分→50分。Claudeを使わずスクリプトだけで集める)
+  $env:BUDGET = "3000"
   & "C:\Program Files\Git\bin\bash.exe" (Join-Path $root "自動実行\馬DB\update.sh") 2>&1 | Out-File -Append -Encoding utf8 $log
   git add "馬情報/過去レースデータ" "自動実行/PC収集/backfill_last.txt" "馬情報/複勝の買い方_成績.md" "馬情報/馬DB" 2>&1 | Out-Null
   git diff --cached --quiet

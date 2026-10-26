@@ -123,7 +123,7 @@ sub do_recent {
   my $l14 = strftime('%Y-%m-%d', gmtime(time + 9 * 3600 - 14 * 86400)); my @keep; my $m = 0;
   for my $l (rlines("$ST/ran_recent.tsv")) { my ($d, $id, $cn) = split /\t/, $l; next unless $cn && $d ge $l14; push @keep, $l;
     next unless exists $known{$id} && ($lastrun{$id} // '') lt $d && ($known{$id} // '') lt $TODAY;
-    my $b = exists $qprio{$id}; enqueue($id, $cn, 1); $m++ if !$b && exists $qprio{$id} }
+    my $b = exists $qprio{$id}; enqueue($id, $cn, 1, $TODAY); $m++ if !$b && exists $qprio{$id} }
   open my $o, '>:utf8', "$ST/ran_recent.tsv"; print $o "$_\n" for @keep; close $o;
   logm("最近の開催: $nd 日分を見て、取り直す馬 $n 頭。成績がまだ入っていない馬 $m 頭も取り直す");
 }
