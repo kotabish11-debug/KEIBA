@@ -295,6 +295,25 @@ sub build {
 }
 
 if (($ARGV[0] // '') eq 'build') { merge(); build(); exit 0 }
+# 消えた分を取り直す予定に入れる(2026-10-27 の git の競合で、プロフィールの一部が消えたときに作った)
+#   ・父・母・母の父・母の母がDBにいない馬 → その子のページを取り直す(子のページに父母のリンクがある。父母1頭につき子1頭)
+#   ・出走履歴にいてプロフィールが無い馬 → 済んだ開催日を消して遡りを今月からやり直す(結果のページに馬のリンクがある)
+#   ・産駒一覧を取ったことになっているのに 産駒一覧.tsv に無い母 → 取り直す
+if (($ARGV[0] // '') eq 'repair') {
+  merge(); my %cn; my %pc; my $np = 0;
+  for my $f (files("$PROFD/*.tsv")) { for my $r (rtsv($f)) { $cn{$r->[0]} = $r->[38] } }
+  for my $f (files("$PROFD/*.tsv")) { for my $r (rtsv($f)) { for my $i (7, 9, 11, 13) { my $p = $r->[$i] // ''; next if $p eq '' || $known{$p} || $pc{$p};
+    $pc{$p} = 1; next unless $r->[38]; $known{$r->[0]} = '';   # 取得日を空にして、取り直す予定に入るようにする
+    my $b = exists $qprio{$r->[0]}; enqueue($r->[0], $r->[38], 1, $TODAY); $np++ if !$b } } }
+  my %ran; for my $f (files("$RUND/*.tsv")) { open my $h, '<:utf8', $f or next; <$h>; while (<$h>) { my ($id) = split /\t/; $ran{$id} = 1 unless $known{$id} || $cn{$id} } }
+  my %kk; for my $r (rtsv("$DB/産駒一覧.tsv")) { $kk{$r->[0]} = 1 } my $nd = 0;
+  for my $k (keys %dams) { if (($dams{$k}[1] // '') ne '' && !$kk{$k}) { $dams{$k}[1] = ''; $nd++ } }
+  mkdir "$ST/backup_$TODAY8"; for my $f (qw(days_done.txt cursor.txt queue.tsv dams.tsv)) { system('cp', "$ST/$f", "$ST/backup_$TODAY8/$f") if -e "$ST/$f" }
+  if (%ran) { open my $o, '>:utf8', "$ST/days_done.txt"; close $o; %done_day = (); open $o, '>:utf8', "$ST/cursor.txt"; print $o "pw01skl00999999/B3\n"; close $o }
+  save_state();
+  logm("取り直し: 父母がいない馬 " . scalar(keys %pc) . " 頭(子 $np 頭を取り直す)・プロフィールの無い出走馬 " . scalar(keys %ran) . " 頭(遡りを今月からやり直す)・産駒一覧の母 $nd 頭");
+  exit 0;
+}
 merge();   # 前回止まったときの残り
 do_reglist(); do_recent(); do_denma(); save_state();
 my ($nh, $nk, $nb) = (0, 0, 0); my $lastsave = time;

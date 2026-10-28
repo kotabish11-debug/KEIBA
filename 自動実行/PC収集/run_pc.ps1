@@ -20,6 +20,11 @@ New-Item -ItemType File -Force $lock | Out-Null
 try {
   Log "start"
   git pull --rebase --autostash -q origin main 2>&1 | Out-File -Append -Encoding utf8 $log
+  # 競合で rebase が止まったら、すぐ取り消して退避した変更を戻す(止まったままだと作業フォルダーが古い版のままになり、馬DBなどの収集が消える。2026-10-27 に起きた)
+  if ((Test-Path (Join-Path $root ".git\rebase-merge")) -or (Test-Path (Join-Path $root ".git\rebase-apply"))) {
+    git rebase --abort 2>&1 | Out-File -Append -Encoding utf8 $log
+    Log "pull が競合で止まったので取り消した(手で直すまでコミットはできない)"
+  }
 
   # 2005年以降の全レースのデータ集め(2026-10-26〜)。裏で動かし、動いていれば history_bg.sh が何もせず終わる。GitHubには送らない
   Start-Process -FilePath "C:\Program Files\Git\bin\bash.exe" -ArgumentList '"自動実行/全レース/history_bg.sh"' -WorkingDirectory $root -WindowStyle Hidden
