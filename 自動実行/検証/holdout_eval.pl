@@ -31,6 +31,16 @@ for my $yd (sort glob("$DIR/*")) {
 @races = sort { $a->{date} cmp $b->{date} || $a->{id} cmp $b->{id} } @races;
 my %seen; @races = grep { !$seen{$_->{id}}++ } @races;
 print STDERR scalar(@races), " レース\n";
+# 父・母父(馬ID → [父, 母の父])。JRA-VAN で補った全部入りの馬DB(PCだけ)があればそれ、無ければ 馬情報/馬DB(2026-10-29〜)
+my %PED; my $HJ = $DIR; utf8::decode($HJ); $HJ =~ s{[\\/]過去レースデータ[\\/]全期間[\\/]?$}{};
+for my $db ("$HJ/JRA-VAN/馬DB", "$HJ/馬DB") { my @f = glob(fn("$db/競走馬/") . '*.tsv') or next;
+  for my $p (@f) { open my $t, '<:utf8', $p or next; my $hd = <$t>; chomp $hd; my %i; my @c = split /\t/, $hd; @i{@c} = 0 .. $#c;
+    while (<$t>) { chomp; my @x = split /\t/; $PED{$x[0]} = [$x[$i{'父'}] // '', $x[$i{'母の父'}] // ''] } }
+  print STDERR "父・母父: $db(", scalar(keys %PED), " 頭)\n"; last }
+# race_json.pl と同じ種牡馬の表(道悪の得意・苦手、国別タイプ)
+my %SIRE_WET = ('芝' => { map({ $_ => 1 } qw(キズナ モーリス イスラボニータ ファインニードル シスキン)), map({ $_ => -1 } qw(キタサンブラック レイデオロ スワーヴリチャード コントレイル)) },
+  'ダ' => { 'ナダル' => 1, 'パイロ' => 1, 'サンダースノー' => -1 });
+my %STYPE; if (open my $t, '<:utf8', fn("$HJ/種牡馬_国別タイプ.tsv")) { <$t>; while (<$t>) { chomp; s/\r$//; my ($s, $ty, $sub, $cf) = split /\t/; $STYPE{$s} = $ty if $s && $ty && $ty ne '?' && ($cf // '') ne '?' } }
 
 # 2. レースごとの共通の値(場・ペース・頭数・勝ち時計)と、各馬の1走ぶんの記録
 my %hist;   # 馬ID → [ 過去走(古い順) ]
@@ -137,12 +147,28 @@ my @F = (
   [q(冬(12〜2月)の牝馬・牝馬限定戦以外), -2, q(データ分析), sub { my ($c, $h) = @_; ($c->{mo} == 12 || $c->{mo} <= 2) && $c->{cond} !~ /牝/ && ($h->{sexAge} // q()) =~ /^牝/ }],
   [q(夏(6〜8月)の牝馬・牝馬限定戦以外), 1, q(データ分析), sub { my ($c, $h) = @_; ($c->{mo} >= 6 && $c->{mo} <= 8) && $c->{cond} !~ /牝/ && ($h->{sexAge} // q()) =~ /^牝/ }],
   [q(1年前の同じ時期に3着以内・近5走は4着以下), 2, q(データ分析), sub { $_[3]{season} && !grep { ($_->{rank} // 99) <= 3 } @{$_[2]} }],
+  # CiNii の論文(徳田 2020「日本競馬における前走2着のバイアス」中央大学。芝の古馬戦 2000〜2019年で、前走2着の0.0〜0.1秒差は単回収78%・0.8〜0.9秒差は155%)。2026-10-27 結果を見る前に決めた
+  [q(前走2着・0.1秒差以内), -2, q(論文), sub { my $p = $_[2][0]; $p->{rank} == 2 && defined $p->{margin} && $p->{margin} <= 0.1 }],
+  [q(前走2着・0.1秒差以内(芝の古馬戦)), -2, q(論文), sub { my ($c, $h, $z) = @_; $c->{surf} eq q(芝) && $c->{cond} =~ /歳上/ && $z->[0]{rank} == 2 && defined $z->[0]{margin} && $z->[0]{margin} <= 0.1 }],
+  [q(前走2着・0.6〜1.0秒差(芝の古馬戦)), 2, q(論文), sub { my ($c, $h, $z) = @_; $c->{surf} eq q(芝) && $c->{cond} =~ /歳上/ && $z->[0]{rank} == 2 && defined $z->[0]{margin} && $z->[0]{margin} >= 0.6 && $z->[0]{margin} <= 1.0 }],
+  # 血統と騎手の癖(race_json.pl にあるが、父が無くて確かめていなかったもの。2026-10-29 JRA-VAN の馬DBで父がそろった。検証.md の24)
+  [q(父が道悪得意・道悪の経験2戦以下・今回道悪), 1, q(血統), sub { my ($c, $h, $z, $v) = @_; $c->{going} =~ /稍|重|不/ && $v->{wruns} <= 2 && ($SIRE_WET{$c->{surf}}{$v->{sire}} // 0) > 0 }],
+  [q(父が道悪苦手・道悪の経験2戦以下・今回道悪), -1, q(血統), sub { my ($c, $h, $z, $v) = @_; $c->{going} =~ /稍|重|不/ && $v->{wruns} <= 2 && ($SIRE_WET{$c->{surf}}{$v->{sire}} // 0) < 0 }],
+  [q(父が米国型・2〜3歳の未勝利・1勝のダ1400以下), 2, q(血統), sub { my ($c, $h, $z, $v) = @_; ($STYPE{$v->{sire}} // '') eq '米国' && $c->{surf} eq 'ダ' && $c->{dist} <= 1400 && $c->{cls} =~ /^[23]歳(?:未勝利|1勝)/ }],
+  [q(父か母父が欧州型・古馬の芝2200以上の道悪・経験2戦以下), 1, q(血統), sub { my ($c, $h, $z, $v) = @_; $c->{surf} eq '芝' && $c->{dist} >= 2200 && $c->{cond} =~ /歳上/ && $c->{going} =~ /稍|重|不/
+      && $v->{wruns} <= 2 && !($SIRE_WET{'芝'}{$v->{sire}} // 0) && grep { ($STYPE{$_} // '') eq '欧州' } $v->{sire}, $v->{dsire} }],
+  [q(西村淳騎手×ロードカナロア産駒), 2, q(騎手), sub { $_[1]{jockey} =~ /^西村淳/ && $_[3]{sire} eq 'ロードカナロア' }],
+  [q(追込が苦手な騎手(西村淳・丹内・ルメール・坂井・松山・幸)の追込), -2, q(騎手), sub { $_[3]{style} eq '追込' && $_[1]{jockey} =~ /^(?:[A-Z]\.)?(西村淳|丹内|ルメール|坂井|松山|幸)/ }],
+  [q(今村騎手の牝馬), 2, q(騎手), sub { $_[1]{jockey} =~ /^今村/ && ($_[1]{sexAge} // '') =~ /^牝/ }],
+  [q(北村友騎手の牝馬), -2, q(騎手), sub { $_[1]{jockey} =~ /^北村友/ && ($_[1]{sexAge} // '') =~ /^牝/ }],
+  [q(戸崎騎手の内枠の差し・追込), -1, q(騎手), sub { $_[1]{jockey} =~ /^戸崎/ && $_[3]{inner} && $_[3]{style} !~ /逃げ|先行/ }],
 );
 # 新馬は過去走が無いので「新馬で馬体重」は別に見る
 my @NF = (
   ['新馬ダートで500kg以上', 3, '新馬', sub { $_[0]{surf} eq 'ダ' && ($_[1]{bw} // 0) >= 500 }],
   ['新馬ダートで460kg未満', -3, '新馬', sub { $_[0]{surf} eq 'ダ' && ($_[1]{bw} // 999) < 460 }],
   ['新馬芝で460kg未満', -2, '新馬', sub { $_[0]{surf} eq '芝' && ($_[1]{bw} // 999) < 460 }],
+  [q(父が米国型・新馬のダ1400以下), 2, q(血統), sub { ($STYPE{$_[3]{sire}} // '') eq '米国' && $_[0]{surf} eq 'ダ' && $_[0]{dist} <= 1400 }],
 );
 
 # 4. 時系列に回す(各馬の過去走は、そのレースより前のものだけ)
@@ -164,7 +190,8 @@ for my $r (@races) {
       my $z = [reverse @{$hist{$h->{horseId} // ''} || []}]; $z = [@{$z}[0 .. 4]] if @$z > 5; $z = [grep { defined } @$z];
       my $win = (($h->{rank} // '') =~ /^\d+$/ && $h->{rank} == 1) ? 1 : 0;
       my $dn = days($r->{date}); my $sea = grep { my $g = $dn - days($_->{date}); $g >= 320 && $g <= 410 && ($_->{rank} // 99) <= 3 } @{$hist{$h->{horseId} // q()} || []};
-      push @rows, { h => $h, z => $z, sea => $sea, p => (1 / $o) / $si, win => $win, odds => $o };
+      my $wr = grep { $_->{surf} eq $r->{_surf} && $_->{going} =~ /稍|重|不/ } @{$hist{$h->{horseId} // q()} || []};
+      push @rows, { h => $h, z => $z, sea => $sea, wr => $wr, p => (1 / $o) / $si, win => $win, odds => $o };
     }
     # レース全体で要る値: 逃げ馬の数・前走1角3番手以内の割合・減量
     my %v;
@@ -182,7 +209,7 @@ for my $r (@races) {
         for my $p (@$z) { next unless $p->{surf} eq 'ダ' && $p->{umaban} && $p->{heads} && $p->{last} && $p->{rank}; next unless $p->{umaban} <= $p->{heads} * 0.4 && $p->{last} > $p->{heads} * 0.3;
           if ($p->{rank} <= 3 || ($p->{margin} // 9) <= 0.3) { $t++ } elsif ($p->{rank} >= 6 && ($p->{margin} // 0) >= 0.6) { $wk++ } }
         $w{sand} = ($t && $c->{cls} =~ /3勝|オープン/) ? 'tough' : (!$t && $wk && $w{inner}) ? 'weak' : '' }
-      $w{season} = $x->{sea}; $x->{v} = \%w;
+      $w{season} = $x->{sea}; $w{wruns} = $x->{wr}; @w{qw(sire dsire)} = @{$PED{$h->{horseId} // ''} || ['', '']}; $x->{v} = \%w;
     }
     $c->{leaders} = grep { $_->{v}{style} eq '逃げ' } @rows;
     my @pf = grep { defined $_->{v}{prevFront} } @rows; $c->{fr} = (@pf >= @rows * 0.7 && @rows >= 8) ? (grep { $_->{v}{prevFront} } @pf) / @pf : undef;
@@ -199,7 +226,7 @@ for my $r (@races) {
         my ($gf, $gt) = $c->{surf} eq '芝' ? ($pin, $nout) : ($pout, $nin); my ($bf, $bt) = $c->{surf} eq '芝' ? ($pout, $nin) : ($pin, $nout);
         $c->{waku_sw} = ($gf && $gt) ? 'good' : ($bf && $bt) ? 'bad' : '' }
       $c->{dist_seen} = grep { $_->{dist} == $c->{dist} && $_->{surf} eq $c->{surf} } @$z;
-      my $list = $c->{cls} =~ /新馬/ ? \@NF : (@$z && $z->[0]{rank}) ? \@F : [grep { $_->[2] =~ /馬体重|馬格|騎手|義英真|スポナビ|先読み/ && $_->[0] !~ /前走/ } @F];
+      my $list = $c->{cls} =~ /新馬/ ? \@NF : (@$z && $z->[0]{rank}) ? \@F : [grep { $_->[2] =~ /馬体重|馬格|騎手|義英真|スポナビ|先読み|血統/ && $_->[0] !~ /前走/ } @F];
       for my $f (@$list) {
         next unless eval { $f->[3]->($c, $h, $z, $v) };
         my $s = $S{$f->[0]}[$pi] //= [0, 0, 0, 0, 0, 0, 0];

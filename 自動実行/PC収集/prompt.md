@@ -7,7 +7,7 @@
 - 同じフォルダーでユーザーの別のセッションが simulator.html などを編集していることがある。コミットするのは自分が作った・変えたファイルだけ(`git add -A` は使わない)
 
 手順:
-1. `TZ=Asia/Tokyo date` で日本時間を確認し、`CLAUDE.md` と `情報収集の手順.md` を読む。ToolSearch で "select:ArtifactData" を読み込む。作業用フォルダー W=$(mktemp -d) を作る。
+1. `TZ=Asia/Tokyo date` で日本時間を確認し、`CLAUDE.md` と `情報収集の手順.md` を読む。ArtifactData がツールに無いときだけ ToolSearch で "select:ArtifactData" を読み込む(2026-10-29 に、この無人実行でも ArtifactData が最初から使え、db の get が成功することを確かめた。ToolSearch で見つからなくても、すでに読み込まれていることがある)。「使えない」と判断する前に必ず ArtifactData の get(collection "config"・doc_id "model")を1回試し、失敗したらエラー文をそのまま情報収集ログに書く。作業用フォルダー W=$(mktemp -d) を作る。
 2. 全レース(JRA公式版。2026-10-23 ユーザー指示でJRAがメイン。競馬ラボ版は使わない): ArtifactData の list(collection "races"、out_dir に $W/db、next_cursor があれば最後まで)で今のレースデータを保存して各 version を控え、config/model も get して version を控える。
    `bash 自動実行/全レース/run.sh $W/out $W/db` を実行する(Bash のタイムアウトは10分)。$W/out/manifest.tsv の各行を db に書く:
    - `race <doc_id> <file>` → races/<doc_id> を set(既存なら控えた version を if_version に)
@@ -15,7 +15,7 @@
    - `model config/model <file>` → config/model を set(既存なら if_version)
    batch(1回50件まで、file_path で渡す)でまとめて書く。version の競合で失敗したら get し直してやり直す。
    run.sh が失敗して manifest.tsv が空なら、`git checkout -- 自動実行/全レース/model.json` で戻して次へ進む。
-   run.sh が 自動実行/全レース/jockey.tsv(騎手の連対率の表)・season.tsv(1年前の好走の表)を変えたら(どちらも1日1回作り直す)、手順6のコミットに含める(クラウドはコミットされた表で騎手の点・季節の補正を作る)
+   run.sh が 自動実行/全レース/jockey.tsv(騎手の連対率の表)・season.tsv(1年前の好走の表)を変えたら(どちらも1日1回作り直す)、手順6のコミットに含める(クラウドはコミットされた表で騎手の点・季節の補正を作る)。調教の表 chokyo.tsv(JRA-VAN から作る)は再配布できないのでコミットしない。調教の点は PC が db に書いたものを、クラウドの run.sh が chokyo_keep.pl で引き継ぐ
 3. 判断材料: `馬情報/2026年_重賞一覧.md` の未実施で今日から8日以内の重賞すべてについて、`情報収集の手順.md` の「2-2. 判断材料の収集」を行う(`bash 自動実行/判断材料/collect.sh <競馬ラボID>`)。段階(特別登録・出走確定・枠順確定)が前回から進んでいれば取り直し、ファイルの最後の「読み取り」と「シミュレーターへの反映案」も直す。反映案(courseBias・drawBias・chaos・能力値)が変わったら、「4. シミュレーターへの追加」に従って `シミュレーター/races/<id>.json` と db の races/<id> を update する(if_version 付き。手入力の項目や他の値は消さない)。
    終わった重賞で判断材料ファイルに「結果と反省」がまだなければ、db の review と結果を見て追記する。
    出走馬の血統・母の産駒(きょうだいの成績)・父の芝ダ/距離/道悪の成績・全成績は、馬DBを `perl 自動実行/馬DB/find.pl <馬名>` で引いて判断材料に使う(馬DBは run_pc.ps1 が毎回スクリプトで集めるので、ここでは集めなくてよい。[馬情報/馬DB/説明.md](../../馬情報/馬DB/説明.md))

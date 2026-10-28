@@ -2,7 +2,7 @@
 # 情報収集そのものはクラウドのルーティンが行う。PCが止まっていた間の分は、次に起動したときにここで取り込まれる
 param([int]$WaitMinutes = 30)
 
-$root = "C:\Users\murakawa kota\Desktop\競馬"
+$root = "C:\Users\murakawa kota\Desktop\AIの作業場\競馬"
 $logDir = Join-Path $root "自動実行\logs"
 New-Item -ItemType Directory -Force $logDir | Out-Null
 Set-Location $root

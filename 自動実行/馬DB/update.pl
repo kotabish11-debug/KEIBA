@@ -215,15 +215,21 @@ sub merge {
 
 # ---- まとめ: 種牡馬・繁殖牝馬・概要 ----
 sub pct { my ($a, $b) = @_; $b ? sprintf('%.3f', $a / $b) : '' }
+# full = 1: 馬DB(JRA公式のページ)に無い馬を JRA-VAN(jv.pl が作る 馬情報/JRA-VAN/馬DB/)から補って、まとめをそこに作る(再配布できないのでPCだけ)
+my $JVD = "$ROOT/馬情報/JRA-VAN/馬DB";
+sub hasjv { my @f = files("$JVD/競走馬/*.tsv"); scalar @f }
 sub build {
-  my %P; my %ci; @ci{@PCOL} = 0 .. $#PCOL;
+  my $full = shift; my $out = $full ? $JVD : $DB;
+  my %P; my %jv; my %ci; @ci{@PCOL} = 0 .. $#PCOL;
   for my $f (files("$PROFD/*.tsv")) { for my $r (rtsv($f)) { $P{$r->[0]} = $r } }
+  if ($full) { for my $f (files("$JVD/競走馬/*.tsv")) { for my $r (rtsv($f)) { next if $P{$r->[0]}; $P{$r->[0]} = $r; $jv{$r->[0]} = 1 } } }
   # 抹消一覧で抹消された馬(ページを取り直すまで抹消日が空のもの)
   my %mas; for my $r (rtsv("$DB/抹消.tsv")) { $mas{"$r->[1]\t$r->[4]\t$r->[5]"} = $r->[0] }
   my (%S, %B, %gw); my $y3 = (substr($TODAY, 0, 4) - 3) . substr($TODAY, 4);
-  for my $f (files("$RUND/*.tsv")) {
+  # 出走は、その馬のプロフィールと同じところ(馬DB か JRA-VAN)のものだけ数える
+  for my $src ([$RUND, 0], $full ? ["$JVD/出走履歴", 1] : ()) { for my $f (files("$src->[0]/*.tsv")) {
     for my $r (rtsv($f)) {
-      my $p = $P{$r->[0]} or next; next unless $JRA{$r->[2]} && $r->[11] =~ /^\d+$/;
+      my $p = $P{$r->[0]} or next; next if ($jv{$r->[0]} // 0) != $src->[1]; next unless $JRA{$r->[2]} && $r->[11] =~ /^\d+$/;
       my ($rank, $sf, $dist, $go) = ($r->[11], $r->[6], $r->[7] || 0, $r->[8]);
       for my $t ([\%S, $p->[$ci{'父'}]], [\%B, $p->[$ci{'母の父'}]]) {
         my ($H, $nm) = @$t; next unless $nm; my $x = $H->{$nm} //= {};
@@ -238,7 +244,7 @@ sub build {
         $x->{win}{$r->[0]} = 1 if $rank == 1;
       }
     }
-  }
+  } }
   # 種牡馬の国別タイプ・リーディング・種付料(既存の資料から)
   my %type = map { ($_->[0] => [$_->[1], $_->[4] // '']) } rtsv("$ROOT/馬情報/種牡馬_国別タイプ.tsv");
   my %lead; if (open my $h, '<:utf8', "$ROOT/馬情報/種牡馬リーディング_2026_中央.csv") { <$h>; while (<$h>) { chomp; my @c = split /,/; $lead{$c[1]} = $c[0] if @c > 1 } }
@@ -257,7 +263,7 @@ sub build {
       $x->{n3} // 0, pct($x->{w3} // 0, $x->{n3}), pct($x->{p3} // 0, $x->{n3}), $sum,
       join('・', map { $_->[$ci{'馬名'}] } grep { defined && $_->[$ci{'総賞金'}] } @top), $bm->{n} // 0, pct($bm->{w} // 0, $bm->{n}), pct($bm->{p} // 0, $bm->{n})];
   }
-  wtsv("$DB/種牡馬.tsv", [qw(種牡馬 種牡馬ID 生年月日 父 母の父 国別タイプ 系統 リーディング順位2026中央 種付料 産駒数 出走頭数 勝ち馬頭数 重賞勝ち馬頭数 出走回数 勝利数 勝率 連対率 複勝率
+  wtsv("$out/種牡馬.tsv", [qw(種牡馬 種牡馬ID 生年月日 父 母の父 国別タイプ 系統 リーディング順位2026中央 種付料 産駒数 出走頭数 勝ち馬頭数 重賞勝ち馬頭数 出走回数 勝利数 勝率 連対率 複勝率
     芝出走 芝勝率 芝複勝率 ダ出走 ダ勝率 ダ複勝率 複勝率1400以下 複勝率1401-1800 複勝率1801-2200 複勝率2201以上 道悪複勝率 道悪出走 直近3年出走 直近3年勝率 直近3年複勝率 産駒総賞金 代表産駒
     母父として出走回数 母父として勝率 母父として複勝率)], [sort { $b->[33] <=> $a->[33] || $a->[0] cmp $b->[0] } @rows]);
   # 繁殖牝馬: 産駒一覧のページ(あれば)と、DBの競走馬の母から
@@ -279,22 +285,24 @@ sub build {
       $me ? ($me->[$ci{'成績'}], $me->[$ci{'総賞金'}]) : ('', ''), scalar(@k), $nr, $nw, $ng, $sum, $best && $best->{prize} ? "$best->{name}($best->{prize}円)" : '',
       join('、', map { substr($_->{birth} // '', 0, 4) . ":$_->{name}(" . ($_->{sire} // '') . ')' } @k), $d->{got} // ''];
   }
-  wtsv("$DB/繁殖牝馬.tsv", [qw(繁殖牝馬 繁殖牝馬ID 生年月日 父 母の父 母 母の母 自身の成績 自身の総賞金 産駒数 出走した産駒 勝ち上がった産駒 重賞勝ち産駒 産駒総賞金 一番稼いだ産駒 産駒(生年:馬名(父)) 産駒一覧の取得日)],
+  wtsv("$out/繁殖牝馬.tsv", [qw(繁殖牝馬 繁殖牝馬ID 生年月日 父 母の父 母 母の母 自身の成績 自身の総賞金 産駒数 出走した産駒 勝ち上がった産駒 重賞勝ち産駒 産駒総賞金 一番稼いだ産駒 産駒(生年:馬名(父)) 産駒一覧の取得日)],
     [sort { $b->[13] <=> $a->[13] || $a->[0] cmp $b->[0] } @dr]);
   # 概要
   my (%cnt, $act, $ret); for my $p (values %P) { $cnt{substr($p->[0], 0, 4)}++; if ($p->[$ci{'抹消日'}] || $mas{"$p->[1]\t$p->[$ci{'父'}]\t$p->[$ci{'母'}]"}) { $ret++ } else { $act++ } }
   my $cur = (rlines("$ST/cursor.txt"))[0] // '(まだ)'; my ($cym) = $cur =~ /pw01skl[01]0(\d{6})/; $cur = $cym ? substr($cym, 0, 4) . '年' . (substr($cym, 4) + 0) . '月' : $cur;
   my $nreg = () = rtsv("$DB/登録.tsv"); my $nmas = () = rtsv("$DB/抹消.tsv"); my $ndam = grep { $dams{$_}[1] =~ /^\d/ } keys %dams;
-  open my $o, '>:utf8', "$DB/概要.md" or die;
-  print $o "# 馬DB の概要(自動で作り直す)\n\n" . strftime('%Y-%m-%d %H:%M', gmtime(time + 9 * 3600)) . " 時点。作り方・使い方は [説明.md](説明.md)\n\n";
-  print $o "| 項目 | 数 |\n|---|---|\n| 競走馬 | " . scalar(keys %P) . " 頭(抹消 " . ($ret // 0) . "・現役 " . ($act // 0) . ")|\n| 種牡馬(産駒がDBにいる父) | " . scalar(@rows) . " 頭 |\n";
+  open my $o, '>:utf8', "$out/概要.md" or die;
+  print $o $full ? "# 馬DB(JRA-VANで補った全部入り。PCだけ)の概要(自動で作り直す)\n\n" . strftime('%Y-%m-%d %H:%M', gmtime(time + 9 * 3600)) . " 時点。作り方は [jv.pl](../../../自動実行/馬DB/jv.pl)、元の馬DBは [馬DB](../../馬DB/概要.md)\n\n"
+    : "# 馬DB の概要(自動で作り直す)\n\n" . strftime('%Y-%m-%d %H:%M', gmtime(time + 9 * 3600)) . " 時点。作り方・使い方は [説明.md](説明.md)\n\n";
+  print $o "| 項目 | 数 |\n|---|---|\n| 競走馬 | " . scalar(keys %P) . " 頭(抹消 " . ($ret // 0) . "・現役 " . ($act // 0) . ($full ? '。うち JRA-VAN で補った馬 ' . scalar(keys %jv) : '') . ")|\n| 種牡馬(産駒がDBにいる父) | " . scalar(@rows) . " 頭 |\n";
   print $o "| 繁殖牝馬(産駒がDBにいる母) | " . scalar(@dr) . " 頭(産駒一覧を取った母 $ndam)|\n| 競走馬登録の記録 | $nreg 頭 |\n| 抹消の記録 | $nmas 頭 |\n| これから取る馬 | " . scalar(keys %qprio) . " 頭 |\n| 遡り | $cur まで進行中(1986年1月まで) |\n\n";
   print $o "## 生年ごとの頭数\n\n| 生年 | 頭数 |\n|---|---|\n"; print $o "| $_ | $cnt{$_} |\n" for sort { $b cmp $a } keys %cnt;
   close $o;
-  logm('まとめを作り直した: 競走馬 ' . scalar(keys %P) . '・種牡馬 ' . scalar(@rows) . '・繁殖牝馬 ' . scalar(@dr));
+  logm(($full ? 'まとめ(JRA-VANで補った全部入り)' : 'まとめ') . 'を作り直した: 競走馬 ' . scalar(keys %P) . '・種牡馬 ' . scalar(@rows) . '・繁殖牝馬 ' . scalar(@dr));
 }
 
-if (($ARGV[0] // '') eq 'build') { merge(); build(); exit 0 }
+if (($ARGV[0] // '') eq 'build') { merge(); build(); build(1) if hasjv(); exit 0 }
+if (($ARGV[0] // '') eq 'full') { build(1); exit 0 }
 # 消えた分を取り直す予定に入れる(2026-10-27 の git の競合で、プロフィールの一部が消えたときに作った)
 #   ・父・母・母の父・母の母がDBにいない馬 → その子のページを取り直す(子のページに父母のリンクがある。父母1頭につき子1頭)
 #   ・出走履歴にいてプロフィールが無い馬 → 済んだ開催日を消して遡りを今月からやり直す(結果のページに馬のリンクがある)
@@ -326,4 +334,4 @@ while (left() > 180) {
   if (time - $lastsave > 120) { save_state(); $lastsave = time; logm("途中: 馬 $nh 頭・産駒一覧 $nk 頭の母・遡り $nb 日、残り " . scalar(keys %qprio) . ' 頭') }
 }
 save_state(); logm("取得: 馬 $nh 頭・産駒一覧 $nk 頭の母・遡り $nb 日。これから取る馬 " . scalar(keys %qprio) . ' 頭');
-merge(); build();
+merge(); build(); build(1) if hasjv();

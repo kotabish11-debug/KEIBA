@@ -1360,22 +1360,8 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
     return out;
   }
 
-  // 道悪(稍重〜不良)で産駒の成績がはっきり上がる(+1)・下がる(-1)種牡馬。全レース自動計算(race_json.pl)と同じ表。出典は 馬情報/種牡馬の道悪適性.md
-  const SIRE_WET = {
-    "芝": { "キズナ": 1, "モーリス": 1, "イスラボニータ": 1, "ファインニードル": 1, "シスキン": 1, "キタサンブラック": -1, "レイデオロ": -1, "スワーヴリチャード": -1, "コントレイル": -1 },
-    "ダ": { "ナダル": 1, "パイロ": 1, "サンダースノー": -1 }
-  };
-  // 手で付けたレースで重馬場適性が未設定(0)の馬は、同じ芝・ダートで道悪の経験が2戦以下なら父の傾向で ±1(自動計算のレースは計算時に反映済み)
-  function sireWetAdj(h) {
-    if (race.auto || Number(h.heavy)) return 0;
-    try {
-      const surf = (race.course || "").charAt(0), p = horseProfile(h.name);
-      const a = (SIRE_WET[surf] || {})[p.sire];
-      if (!a) return 0;
-      const wet = (p.runs || []).filter(r => (!r.surface || r.surface === surf) && /稍|重|不/.test(r.going || "")).length;
-      return wet <= 2 ? a : 0;
-    } catch (e) { return 0; }
-  }
+  // 父の道悪適性(±1)と、古馬の芝長距離の欧州型の道悪 +1 は、2017〜2026/3 の平場でオッズ以上の差がなく外した(2026-10-29。馬情報/的中率を上げるための検証.md の24)。
+  //   元のコードは 削除したもの/simulator_血統の道悪補正を外す前_2026-10-29.html
 
   // 種牡馬の国別タイプ(日本型・米国型・欧州型)。馬情報/種牡馬_国別タイプ.tsv の確度「?」以外と同じ(表を足したらここも)。出典は 馬情報/血統の系統と国別タイプ.md
   const SIRE_TYPE = {};
@@ -1390,19 +1376,6 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       const p = horseProfile(h.name), key = x => String(x || "").replace(/[’‘]/g, "'").trim();
       return { sire: SIRE_TYPE[key(p.sire)] || "", dam: SIRE_TYPE[key(p.damsire)] || "" };
     } catch (e) { return { sire: "", dam: "" }; }
-  }
-  // 手で付けたレースで重馬場適性が未設定(0)の馬: 古馬混合の芝2200m以上で、父か母父が欧州型なら道悪で +1
-  // (道悪の経験が2戦以下で、父の道悪適性の補正がないとき。自動計算のレースは計算時に反映済み)
-  function euroWetAdj(h) {
-    if (race.auto || Number(h.heavy) || sireWetAdj(h)) return 0;
-    const dist = Number(((race.course || "").match(/(\d{4})m/) || [])[1]);
-    if ((race.course || "").charAt(0) !== "芝" || !(dist >= 2200) || !/以上/.test(race.cond || "")) return 0;
-    const b = bloodTypes(h);
-    if (b.sire !== "欧州" && b.dam !== "欧州") return 0;
-    try {
-      const wet = (horseProfile(h.name).runs || []).filter(r => (!r.surface || r.surface === "芝") && /稍|重|不/.test(r.going || "")).length;
-      return wet <= 2 ? 1 : 0;
-    } catch (e) { return 0; }
   }
   // 当日の芝で日本型(サンデー系)の父の馬が走っているか(dayBias.jp: +は主流の馬場、-は反主流の馬場)。父のタイプが分かる馬だけ補正する
   function dayBloodAdj(h) {
@@ -1420,7 +1393,7 @@ dialog.card::backdrop { background: rgba(2, 6, 22, .74); }
       // ダートの道悪は砂が締まって舞いにくく、砂かぶりによる外枠有利が半分になる
       const db = /^ダ/.test(race.course || "") && going >= 2 && race.drawBias < 0 ? race.drawBias * 0.5 : race.drawBias;
       if (u >= 1 && u <= total) s += db * (1 - 2 * (u - 1) / Math.max(1, total - 1));
-      s += clampNum(Number(h.heavy) + (going ? sireWetAdj(h) + euroWetAdj(h) : 0), -3, 3) * going * 0.9;
+      s += clampNum(Number(h.heavy), -3, 3) * going * 0.9;
       s += dayBloodAdj(h);
       // ダートは雨で締まると速くなり、前が止まりにくい
       if (/^ダ/.test(race.course || "") && going >= 2 && (h.style === "逃げ" || h.style === "先行")) s += 0.5;

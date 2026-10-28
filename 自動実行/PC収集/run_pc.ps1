@@ -1,7 +1,7 @@
 ﻿# 競馬ラボ(keibalab.jp)が必要な情報収集をPCで行う(タスクスケジューラ「競馬_PC収集」から呼ばれる)
 # クラウドのルーティンは競馬ラボにつながらないため、全レースの競馬ラボ版・重賞の判断材料・学習データ・種牡馬リーディングはここで集める
 # 指示は prompt.md。Claude Code を無人(-p)で動かし、許可の確認なしで実行する
-$root = "C:\Users\murakawa kota\Desktop\競馬"
+$root = "C:\Users\murakawa kota\Desktop\AIの作業場\競馬"
 $here = Join-Path $root "自動実行\PC収集"
 $logDir = Join-Path $root "自動実行\logs"
 New-Item -ItemType Directory -Force $logDir | Out-Null
@@ -39,6 +39,8 @@ try {
   # 馬DB(全部の競走馬・種牡馬・繁殖牝馬。毎回50分まで。2026-10-26〜。2026-10-27 ユーザー指示「早めたい」で25分→50分。Claudeを使わずスクリプトだけで集める)
   $env:BUDGET = "3000"
   & "C:\Program Files\Git\bin\bash.exe" (Join-Path $root "自動実行\馬DB\update.sh") 2>&1 | Out-File -Append -Encoding utf8 $log
+  # JRA-VAN(2026-10-27〜)の新しいデータを差分だけ取り込む。データはPCだけ(馬情報/JRA-VAN/)
+  & "C:\Program Files\Git\bin\bash.exe" (Join-Path $root "自動実行\JRA-VAN\update.sh") 2>&1 | Out-File -Append -Encoding utf8 $log
   git add "馬情報/過去レースデータ" "自動実行/PC収集/backfill_last.txt" "馬情報/複勝の買い方_成績.md" "馬情報/馬DB" 2>&1 | Out-Null
   git diff --cached --quiet
   if ($LASTEXITCODE -ne 0) {

@@ -67,10 +67,11 @@ my @intv = row('間隔'); my @omega = row('Ω指数'); my @sexage = row('性·�
 my @jc = row('騎手コース');
 # 調教師×騎手の連対率: この行は後ろにコメントが付くので、見出し(th)で行を探す
 my @tj; if ($h =~ /<tr[^>]*>((?:(?!<tr[\s>]).)*?<th>\s*調教師×)/s) { my @c = map { txt($_) } top_tds($1); @tj = @c[-$n .. -1] if @c >= $n }
-# 騎手ごとの、脚質・性別で成績がはっきり変わる条件(過去3年。騎手の解説動画の要約で未検証。出典: 馬情報/騎手の得意・苦手.md)
+# 騎手ごとの、性別で成績がはっきり変わる条件(出典: 馬情報/騎手の得意・苦手.md)
 #   コース・距離の得意不得意は「騎手のこのコース連対率」に入っているので、ここでは足さない
-my %J_OIKOMI = ('西村淳' => -3, '丹内' => -3, 'ルメール' => -2, '坂井' => -2, '松山' => -2, '幸' => -2);   # 追込で勝つ割合がとても低い
-my %J_HINBA = ('今村' => 2, '北村友' => -2);   # 牝馬で成績がはっきり上・下
+#   2026-10-29 に 2017〜2026/3 で確かめた(holdout_eval.pl、検証.md の24): 北村友の牝馬は0.90倍で弱い(-2→-1)。今村の牝馬 +2 は0.91倍(逆)、
+#   追込が苦手な騎手(西村淳・丹内・ルメール・坂井・松山・幸)の追込 -2〜-3 は1.05倍(逆)で外した
+my %J_HINBA = ('北村友' => -1);   # 牝馬で成績がはっきり下
 # 成績表(距離・コース・馬場): 1頭に1つの小さな表。列ごとに [1着,2着,3着,着外]
 sub rec_tables {
   my $s = sect(shift); my @out;
@@ -109,12 +110,7 @@ for my $k (1 .. 5) {
 }
 # 父(馬名等の欄で、馬名の後に母・父が並ぶ)
 my %sire; { my $cur; while ($nm =~ /data-hsnm="([^"]+)"|class="chichi[^"]*"><span[^>]*>[^<]*<\/span>\s*([^<]*?)\s*</g) { if (defined $1) { $cur = $1 } elsif ($cur && !exists $sire{$cur}) { $sire{$cur} = $2 } } }
-# 道悪(稍重〜不良)で産駒の成績がはっきり上がる(+1)・下がる(-1)種牡馬。過去3年の集計(YouTubeの動画、未検証)
-my %SIRE_WET = (
-  '芝' => { 'キズナ' => 1, 'モーリス' => 1, 'イスラボニータ' => 1, 'ファインニードル' => 1, 'シスキン' => 1,
-            'キタサンブラック' => -1, 'レイデオロ' => -1, 'スワーヴリチャード' => -1, 'コントレイル' => -1 },
-  'ダ' => { 'ナダル' => 1, 'パイロ' => 1, 'サンダースノー' => -1 });
-# 国別タイプが米国型(本馬や産駒がアメリカのダートで実績)とはっきり言える種牡馬。仕上がりが早くダッシュ力があり、若駒のダート短距離に強い(亀谷敬正の動画、未検証)
+# 国別タイプが米国型(本馬や産駒がアメリカのダートで実績)とはっきり言える種牡馬。仕上がりが早くダッシュ力があり、若駒のダート短距離に強い(亀谷敬正の動画。2026-10-29 に確かめた)
 # 種牡馬の国別タイプ(日本・米国・欧州)は 馬情報/種牡馬_国別タイプ.tsv から読む。確度が「?」の種牡馬は使わない
 my %STYPE; { (my $dir = __FILE__) =~ s{[\\/][^\\/]*$}{}; $dir = '.' if $dir eq __FILE__; utf8::decode($dir);
   my $tf = "$dir/../../馬情報/種牡馬_国別タイプ.tsv"; utf8::encode($tf);
@@ -138,6 +134,11 @@ sub jockey_eb { my ($jk, $ck) = @_; return undef unless $JG; $jk =~ s/[\s▲△�
 my %SEASON; { (my $dir = __FILE__) =~ s{[\\/][^\\/]*$}{}; $dir = '.' if $dir eq __FILE__; utf8::decode($dir);
   my $tf = "$dir/season.tsv"; utf8::encode($tf);
   local $/ = "\n"; if (open my $th, '<:encoding(UTF-8)', $tf) { while (my $l = <$th>) { chomp $l; $l =~ s/\r$//; my ($nmx, $ds) = split /\t/, $l; $SEASON{$nmx} = [split /,/, $ds // ''] if $nmx } } }
+# 調教の表(chokyo_table.pl が JRA-VAN の坂路・ウッドから作る。PCだけ): 馬名 → [ふだんの本数, この21日の調教]。$CHOKYO_LAST = 調教のデータの最後の日
+my (%CHOKYO, $CHOKYO_LAST); { (my $dir = __FILE__) =~ s{[\\/][^\\/]*$}{}; $dir = '.' if $dir eq __FILE__; utf8::decode($dir);
+  my $tf = "$dir/chokyo.tsv"; utf8::encode($tf);
+  local $/ = "\n"; if (open my $th, '<:encoding(UTF-8)', $tf) { while (my $l = <$th>) { chomp $l; $l =~ s/\r$//; my ($nmx, $base, $ws) = split /\t/, $l;
+    if ($nmx eq '#最終') { $CHOKYO_LAST = $base } elsif ($nmx) { $CHOKYO{$nmx} = [$base, [map { [split /:/] } split /;/, $ws // '']] } } } }
 sub days { my ($y, $m, $d) = split /-/, shift; my $a = int((14 - $m) / 12); my $yy = $y + 4800 - $a; my $mm = $m + 12 * $a - 3; $d + int((153 * $mm + 2) / 5) + 365 * $yy + int($yy / 4) - int($yy / 100) + int($yy / 400) }
 # 母父(馬名の後に並ぶ「(母父)」)
 my %damsire; { my $cur; while ($nm =~ /data-hsnm="([^"]+)"|class="tategaki hahachichi[^"]*">\s*(.*?)\s*<\/p>/sg) { if (defined $1) { $cur = $1 } elsif ($cur && !exists $damsire{$cur}) { (my $d = txt($2)) =~ s/[()（）]//g; $d =~ s/’/'/g; $damsire{$cur} = $d } } }
@@ -211,7 +212,6 @@ for my $i (0 .. $n - 1) {
     elsif ($tr <= 5 && $tn >= 15) { $ja -= 2; push @jw, "調教師×騎手の連対率${tr}%(-2)" }
   }
   my $jk = $jockey[$i] // ''; $jk =~ s/^[A-Za-z]\.//;
-  for my $k (keys %J_OIKOMI) { if ($style eq '追込' && index($jk, $k) == 0) { $ja += $J_OIKOMI{$k}; push @jw, "${k}騎手は追込が苦手($J_OIKOMI{$k})" } }
   for my $k (keys %J_HINBA) { if (($sexage[$i] // '') =~ /^牝/ && index($jk, $k) == 0) { $ja += $J_HINBA{$k}; push @jw, "${k}騎手は牝馬" . ($J_HINBA{$k} > 0 ? "が得意(+" : "が苦手(") . "$J_HINBA{$k})" } }
   # 騎手×馬場・枠・馬格・産駒(出典: 馬情報/騎手の得意・苦手.md「7人の癖」。コースの連対率には入らない条件だけ)
   my $u0 = ($umaban[$i] // '') =~ /^(\d+)$/ ? $1 : 0;
@@ -221,21 +221,34 @@ for my $i (0 .. $n - 1) {
   #   松山の外枠の差し1.12(逆)はオッズ以上の差がなく外した(元のコードは 削除したもの/race_json_確かめ直し前_2026-10-27.pl)
   if (index($jk, '川田') == 0 && $surf eq '芝' && defined $baba && $baba ne '良') { $ja -= 1; push @jw, "川田騎手は芝の道悪が苦手(-1)" }
   if (index($jk, '戸崎') == 0 && $inner && $style !~ /逃げ|先行/) { $ja -= 1; push @jw, "戸崎騎手は内枠で包まれるのが苦手(-1)" }
-  if (index($jk, '西村淳') == 0 && ($sire{$name} // '') eq 'ロードカナロア') { $ja += 2; push @jw, "西村淳騎手はロードカナロア産駒と手が合う(+2)" }
+  # 戸崎の内枠の差し・追込は2017〜2026/3 で0.84倍(多重検定を通った)。西村淳×ロードカナロアは1.42倍だが199頭で前半0.99とぶれるので +2→+1(2026-10-29、検証.md の24)
+  if (index($jk, '西村淳') == 0 && ($sire{$name} // '') eq 'ロードカナロア') { $ja += 1; push @jw, "西村淳騎手はロードカナロア産駒と手が合う(+1)" }
   $kishu = clamp($kishu + clamp($ja, -5, 5), 50, 95) if $ja;
-  my $heavy = 0; my $g = $rgoing[$i]; my $wruns = 0;
+  my $heavy = 0; my $g = $rgoing[$i];
   if ($g) { my ($w, $p, $runs) = (0, 0, 0); for my $k (keys %$g) { next unless $k =~ /稍|重|不/; my ($a, $b, $c, $o) = map { $_ // 0 } @{$g->{$k}}; $w += $a; $p += $a + $b + $c; $runs += $a + $b + $c + $o }
-    $heavy = $w >= 1 ? 2 : ($runs >= 1 && $p / $runs >= 0.4) ? 1 : ($runs >= 2 && $p == 0) ? -1 : 0; $wruns = $runs }
-  # 道悪の経験が少ない(2戦以下)馬は、父の産駒の道悪成績で ±1(出典: 馬情報/種牡馬の道悪適性.md)
-  my $sire = $sire{$name} // ''; my $sadj = $SIRE_WET{$surf}{$sire} // 0; my $snote = '';
-  if ($sadj && $wruns <= 2) { $heavy = clamp($heavy + $sadj, -2, 2); $snote = "父${sire}は道悪" . ($sadj > 0 ? '得意' : '苦手') }
-  # 2・3歳限定の新馬・未勝利・1勝クラスのダート1400m以下は、父が米国型なら +2(出典: 馬情報/血統の系統と国別タイプ.md)
+    $heavy = $w >= 1 ? 2 : ($runs >= 1 && $p / $runs >= 0.4) ? 1 : ($runs >= 2 && $p == 0) ? -1 : 0 }
+  # 父の道悪適性(道悪の経験2戦以下で ±1)と、古馬の芝2200m以上で父か母父が欧州型の道悪 +1 は、2017〜2026/3 の平場で
+  #   1.04倍・1.03倍(苦手のはず)・1.09倍(432頭、p=0.25)とオッズ以上の差がなく外した(2026-10-29、JRA-VAN の馬DBで父をつないで確かめた。検証.md の24)
+  my $sire = $sire{$name} // '';
+  # 2・3歳限定の新馬・未勝利・1勝クラスのダート1400m以下は、父が米国型なら調子 +1(出典: 馬情報/血統の系統と国別タイプ.md)。
+  #   2017〜2026/3 で未勝利・1勝 1.09倍(9,426頭、多重検定を通り前半1.11・後半1.09)、新馬 1.10倍(1,812頭)。点は他の補正(1.03〜1.1倍で±1)にそろえ、
+  #   重み5.5%のコースの +2 から重み24.5%の調子の +1 に移した(2026-10-29)
   my $unote = '';
-  if ($SIRE_US{$sire} && $surf eq 'ダ' && $dist <= 1400 && $cls =~ /^[23]歳(?:新馬|未勝利|1勝クラス)/) { $course = clamp($course + 2, 50, 92); $unote = "父${sire}は米国型(若駒のダート短距離 +2)" }
-  # 古馬混合の芝2200m以上は、父か母父が欧州型なら道悪で +1(道悪の経験2戦以下、父の道悪適性で補正した馬は除く)
-  my $dsire = $damsire{$name} // ''; my $enote = '';
-  if (!$sadj && $wruns <= 2 && $surf eq '芝' && $dist >= 2200 && $cls =~ /以上|上/ && grep { ($STYPE{$_} // '') eq '欧州' } $sire, $dsire) {
-    $heavy = clamp($heavy + 1, -2, 2); $enote = (($STYPE{$sire} // '') eq '欧州' ? "父${sire}" : "母父${dsire}") . 'が欧州型(古馬の芝長距離の道悪 +1)' }
+  if ($SIRE_US{$sire} && $surf eq 'ダ' && $dist <= 1400 && $cls =~ /^[23]歳(?:新馬|未勝利|1勝クラス)/) { $choshi += 1; $unote = "父${sire}は米国型(若駒のダート短距離 +1)" }
+  # 調教の点(JRA-VAN の全調教 94万頭で、3着以内が単勝オッズの見込みより +2: 1.10倍・+1: 1.045倍・-1: 0.97倍、2015年まで・2016年からとも同じ。検証.md の22・25)
+  #   +2 = 2週間の本数がふだんより多い・最終週の坂路の終い1F 12.0秒未満 / +1 = 本数がふだんより多い・終い12.5未満・加速ラップ、本数がふだんより2本以上多い、終い12.0未満のどれか / -1 = 2週間に坂路・ウッド0本
+  #   調教のデータがレースの2日前(追い切りの多い水・木)まで入っていないとき(前の週の計算など)と、新馬・障害は付けない
+  my $cnote = '';
+  if ($CHOKYO{$name} && $date && $CHOKYO_LAST && days($CHOKYO_LAST) >= days($date) - 2 && $cls !~ /新馬/ && $surf ne '障') {
+    my ($base, $ws) = @{$CHOKYO{$name}}; my $d0 = days($date);
+    my @w14 = grep { my $g = $d0 - days($_->[0]); $g >= 1 && $g <= 14 } @$ws;
+    my ($best) = sort { $a->[2] <=> $b->[2] } grep { $_->[1] == 0 && $_->[2] > 0 && $d0 - days($_->[0]) <= 7 } @w14;
+    my $s1 = $best && $best->[3] ? $best->[3] / 10 : 99; my $acc = $best && $best->[3] && $best->[4] && $best->[3] < $best->[4];
+    my $dn = $base ne '' ? @w14 - $base : undef; my $more = defined $dn && $dn > 0.5;
+    my $pt = $more && $s1 < 12.0 ? 2 : (($more && $s1 < 12.5 && $acc) || ($dn // 0) >= 2 || $s1 < 12.0) ? 1 : @w14 ? 0 : -1;
+    if ($pt) { $choshi += $pt; $cnote = '調教' . join('・', grep { $_ } (@w14 ? '2週間に' . @w14 . '本' . (defined $dn ? sprintf('(ふだん%.1f)', $base) : '') : '2週間に坂路・ウッド0本'),
+      ($s1 < 99 ? sprintf('坂路の終い%.1f', $s1) . ($acc ? '加速' : '') : '')) . '(' . ($pt > 0 ? '+' : '') . "$pt)" } }
+  my $dsire = $damsire{$name} // '';
   my $od =($odds[$i] // '') =~ /^([\d.]+)/ ? $1 + 0 : undef;
   my @notes = (($RAW ? "近走の指数(" . $SRCN . "の着差から) " : "Ω指数 ") . (($omega[$i] // '') =~ /^\d+$/ ? $omega[$i] : 'なし'));
   push @notes, "前走 $z->[0]{race} $z->[0]{rank}着" if @$z && $z->[0]{rank};
@@ -261,9 +274,8 @@ for my $i (0 .. $n - 1) {
   push @notes, '中1週(-1)' if defined $wk && $wk == 1;
   push @notes, "騎手のこのコース連対率 $jr%" if defined $jn && $jn >= 5;
   push @notes, @jw;
-  push @notes, $snote if $snote;
   push @notes, $unote if $unote;
-  push @notes, $enote if $enote;
+  push @notes, $cnote if $cnote;
   my %hh = (name => $name, jockey => ($jockey[$i] // '未定'), style => $style,
     jisseki => $jisseki, kyori => $kyori, course => $course, choshi => clamp($choshi, 40, 95), kishu => $kishu, heavy => $heavy,
     note => join('・', @notes) . '(自動計算)');

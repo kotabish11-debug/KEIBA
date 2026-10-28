@@ -1,4 +1,4 @@
-# 学習データ(平場_*.jsonl.gz)を、過去レースでシミュレーターを動かす harness.html 用の data.js にする(計算に要る項目だけ)
+# 学習データ(平場_*.jsonl.gz)を、過去レースでシミュレーターを動かす bt.js 用の data.js にする(計算に要る項目だけ)
 # 使い方: perl make_data.pl <出力 data.js> <平場_*.jsonl.gz>...
 use utf8; use strict; use warnings;
 use JSON::PP; use IO::Uncompress::Gunzip;

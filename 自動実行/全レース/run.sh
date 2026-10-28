@@ -35,6 +35,11 @@ ST="$HERE/season.tsv"
 if [ -s "$FULL/$(date +%Y)/JRA詳細.jsonl" ] && [ "$(date -r "$ST" +%F 2>/dev/null)" != "$(date +%F)" ]; then
   perl "$HERE/season_table.pl" "$FULL" > "$OUT/tmp/season.tsv" 2>/dev/null && [ "$(wc -l < "$OUT/tmp/season.tsv")" -gt 1000 ] && mv "$OUT/tmp/season.tsv" "$ST" && echo "1年前の好走の表を作り直した"
 fi
+# 調教の表(race_json.pl の「調教の点」に使う)は JRA-VAN のデータがある PC で毎回作り直す(調教は毎日増えるので。再配布できないのでコミットしない)
+CT="$HERE/chokyo.tsv"; JV="$ROOT/馬情報/JRA-VAN"
+if [ -d "$JV/全データ/SLOP" ]; then
+  (cd "$ROOT" && perl "$HERE/chokyo_table.pl" "馬情報/JRA-VAN") > "$OUT/tmp/chokyo.tsv" 2>/dev/null && [ "$(wc -l < "$OUT/tmp/chokyo.tsv")" -gt 1000 ] && mv "$OUT/tmp/chokyo.tsv" "$CT" && echo "調教の表を作り直した($(head -1 "$CT" | cut -f2) まで)"
+fi
 YBUDGET="${YBUDGET:-300}"; YSTART=$SECONDS; HC="$OUT/hc"; mkdir -p "$HC"
 yget() { curl -sSL -A "$UA" -o "$2" "https://sports.yahoo.co.jp/keiba/$1"; sleep 0.3; }
 # 日付と場コード → スポーツナビの開催ID(8桁: 年2+場2+回2+日2)を YK に入れる(月の日程ページから引く)
@@ -156,6 +161,8 @@ for off in -1 $(seq 0 "${AHEAD:-6}"); do
         # オッズの動きを残す(2026-10-26〜)。db は毎回上書きされるので、取った回ごとの単勝・複勝 {馬番: [単勝, 複勝下限, 上限]} を足していく。発走前の売れ方が当たりに効くかを後で確かめるため
         [ -n "$FUKU" ] && mkdir -p "$ROOT/馬情報/オッズの推移" && printf '{"id":"%s","at":"%s","fuku":%s}\n' "$ID" "$FUKUAT" "$FUKU" >> "$ROOT/馬情報/オッズの推移/$DISO.jsonl"
         if [ $RC -eq 0 ] && { [ -z "$DBFILE" ] || [ "$(docid_of "$DBFILE")" = "k$ID" ]; }; then
+          # 調教の表が無い(クラウド)ときは、PC が db に書いた調教の点を引き継ぐ(作り直しで消さない)
+          if [ ! -s "$CT" ] && [ -n "$DBFILE" ]; then perl "$HERE/chokyo_keep.pl" "$OUT/tmp/r_$ID.json" "$DBFILE" > "$OUT/tmp/rk_$ID.json" && mv "$OUT/tmp/rk_$ID.json" "$OUT/tmp/r_$ID.json"; fi
           ST=$(perl "$HERE/star.pl" "$OUT/tmp/r_$ID.json" "$MODEL")
           perl -Mutf8 -MJSON::PP -0777 -e 'my $d = JSON::PP->new->utf8->decode(do { local $/; open my $h, "<:raw", $ARGV[0]; <$h> }); my $s = JSON::PP->new->utf8->decode($ARGV[1]);
             $d->{star} = $s->{star}; $d->{starProb} = $s->{starProb}; $d->{starHonmei} = $s->{honmei}; $d->{dayBias} = JSON::PP->new->utf8->decode($ARGV[2]) if $ARGV[2];

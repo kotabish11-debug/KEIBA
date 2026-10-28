@@ -7,9 +7,10 @@
 use utf8; use strict; use warnings;
 binmode STDOUT, ':utf8';
 use JSON::PP; use List::Util qw(sum0);
-my ($y0, $y1, $clean) = @ARGV; $y0 ||= 2017; $y1 ||= 2026; $clean //= 0;
+#   4つ目に 馬情報/JRA-VAN/馬DB を渡すと、JRA-VAN で補った全部入り版(1986年からの全馬。PCだけ)の生年月日を使う(2026-10-29〜)
+my ($y0, $y1, $clean, $DB) = @ARGV; $y0 ||= 2017; $y1 ||= 2026; $clean //= 0; utf8::decode($DB) if defined $DB; $DB ||= '馬情報/馬DB';
 my $J = JSON::PP->new->utf8; my %B;
-for my $f (glob '馬情報/馬DB/競走馬/*年生.tsv') { open my $h, '<:utf8', $f or die "$f: $!"; my $hd = <$h>; chomp $hd; my @c = split /\t/, $hd; my %i; @i{@c} = 0 .. $#c;
+for my $f (glob "$DB/競走馬/*年生.tsv") { open my $h, '<:utf8', $f or die "$f: $!"; my $hd = <$h>; chomp $hd; my @c = split /\t/, $hd; my %i; @i{@c} = 0 .. $#c;
   while (<$h>) { chomp; my @x = split /\t/; my $d = $x[$i{'生年月日'}] // next; $B{"$x[$i{'馬名'}]|$1"} = $2 + 0 if $d =~ /^(\d{4})-(\d\d)-\d\d$/ } }
 if (open my $h, '<:utf8', '馬情報/馬DB/登録.tsv') { <$h>; while (<$h>) { chomp; my @x = split /\t/; $B{"$x[1]|$1"} //= $2 + 0 if ($x[5] // '') =~ /^(\d{4})-(\d\d)-\d\d$/ } }
 sub grp { my $m = shift; $m <= 3 ? '1-3月' : $m <= 5 ? '4-5月' : '6月以降' }
