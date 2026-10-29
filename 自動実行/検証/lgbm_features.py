@@ -1,12 +1,17 @@
 # 「競馬予想で始めるデータ分析」の競馬AI(過去走などの特徴量 → LightGBM で1着の確率 → 期待値 = 確率 × 単勝オッズ)を、
 # netkeiba のスクレイピングの代わりに 全期間/<年>/JRA詳細.jsonl(2005年〜)と レース.jsonl(確定単勝オッズ)で作るための特徴量づくり
-# 使い方: python lgbm_features.py 馬情報/過去レースデータ/全期間 [馬情報/JRA-VAN/馬DB] <出力.pkl>
+# 使い方: python lgbm_features.py 馬情報/過去レースデータ/全期間 [馬情報/JRA-VAN/馬DB] [--extra=<これからのレース.jsonl>] <出力.pkl>
+#  - --until=YYYY-MM-DD: その日より前の結果だけを使う(終わった日を --extra で流して、当日の仕組みを確かめるとき)
+#  - --extra: 自動実行/AI馬券/entries.py が JRA-VAN の出馬表から作る、まだ走っていないレース(JRA詳細 と同じ形で着順なし)。upcoming=1 の行になる
 #  - 1行 = 1頭の1走。特徴量はすべて「そのレースの前に分かる値」だけ(過去走・騎手・調教師・父の成績は前日までの累計)
 #  - 障害は除く。取消・除外は除き、中止は着外として残す
 import sys, os, glob, json, re
 import numpy as np, pandas as pd
 
-DIR = sys.argv[1]; DB = sys.argv[2] if len(sys.argv) > 3 else None; OUT = sys.argv[-1]
+EXTRA = [a[8:] for a in sys.argv[1:] if a.startswith('--extra=')]; UNTIL = ([a[8:] for a in sys.argv[1:] if a.startswith('--until=')] or ['9999'])[0]
+ARGS = [a for a in sys.argv[1:] if not a.startswith('--')]
+DIR = ARGS[0]; DB = ARGS[1] if len(ARGS) > 2 else None; OUT = ARGS[-1]
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); from lgbm_rel import rel
 PLACE = {'01': '札幌', '02': '函館', '03': '福島', '04': '新潟', '05': '東京', '06': '中山', '07': '中京', '08': '京都', '09': '阪神', '10': '小倉'}
 
 def tsec(t):
@@ -18,6 +23,28 @@ def tsec(t):
 
 # 1. 読み込み
 odds, lab, rows = {}, {}, []
+def add(r, g, cond, upcoming=0):
+    R = r.get('race') or {}; surf = R.get('surface') or ''; course = R.get('course') or ''
+    if '障' in surf or '障' in course or '→' in course: return
+    surf = 'ダ' if surf.startswith('ダ') else '芝'
+    hs = [h for h in r.get('horses') or [] if str(h.get('rank')) not in ('取消', '除外')]
+    if len(hs) < 2: return
+    laps = r.get('laps') or []
+    pace = (sum(laps[:3]) - r['last3f']) if len(laps) >= 6 and r.get('last3f') else np.nan
+    for h in hs:
+        rk = h.get('rank'); rk = int(rk) if str(rk).isdigit() else 99
+        ps = [int(x) for x in re.findall(r'\d+', h.get('pass') or '')]
+        sa = h.get('sexAge') or ''
+        rows.append(dict(id=r['id'], date=r['date'], place=PLACE.get(r['id'][8:10], ''), rno=int(r['id'][10:12]), surf=surf,
+            dist=R.get('dist') or 0, going=R.get('going') or '', weather=R.get('weather') or '', cls=R.get('cls') or '',
+            inner='外' in course, kinType=R.get('kinType') or '', grade=g, fillies='牝' in cond, pace=pace, heads=len(hs),
+            horseId=h.get('horseId'), umaban=h.get('umaban'), waku=h.get('waku'), sex=sa[:1], age=int(sa[1:]) if sa[1:].isdigit() else np.nan,
+            kin=h.get('kin'), bw=h.get('bw'), bwDiff=h.get('bwDiff'), blinker=bool(h.get('blinker')),
+            jockey=re.sub(r'^[▲△☆◇★]', '', h.get('jockey') or ''), appr=bool(re.match(r'^[▲△☆◇★]', h.get('jockey') or '')),
+            trainer=h.get('trainer') or '', rank=rk, time=tsec(h.get('time')), f3=tsec(h.get('f3')),
+            pos1=ps[0] if ps else np.nan, pos4=ps[-1] if ps else np.nan, upcoming=upcoming))
+
+done = set()
 for yd in sorted(glob.glob(os.path.join(DIR, '*'))):
     if not re.search(r'\d{4}$', yd): continue
     p = os.path.join(yd, 'レース.jsonl')
@@ -33,27 +60,14 @@ for yd in sorted(glob.glob(os.path.join(DIR, '*'))):
     for l in open(p, encoding='utf-8'):
         try: r = json.loads(l)
         except ValueError: continue
-        R = r.get('race') or {}; surf = R.get('surface') or ''; course = R.get('course') or ''
-        if '障' in surf or '障' in course or '→' in course: continue
-        surf = 'ダ' if surf.startswith('ダ') else '芝'
-        hs = [h for h in r.get('horses') or [] if str(h.get('rank')) not in ('取消', '除外')]
-        if len(hs) < 2: continue
-        laps = r.get('laps') or []
-        pace = (sum(laps[:3]) - r['last3f']) if len(laps) >= 6 and r.get('last3f') else np.nan
-        g, cond = lab.get(r['id'], ('', ''))
-        for h in hs:
-            rk = h.get('rank'); rk = int(rk) if str(rk).isdigit() else 99
-            ps = [int(x) for x in re.findall(r'\d+', h.get('pass') or '')]
-            sa = h.get('sexAge') or ''
-            rows.append(dict(id=r['id'], date=r['date'], place=PLACE.get(r['id'][8:10], ''), rno=int(r['id'][10:12]), surf=surf,
-                dist=R.get('dist') or 0, going=R.get('going') or '', weather=R.get('weather') or '', cls=R.get('cls') or '',
-                inner='外' in course, kinType=R.get('kinType') or '', grade=g, fillies='牝' in cond, pace=pace, heads=len(hs),
-                horseId=h.get('horseId'), umaban=h.get('umaban'), waku=h.get('waku'), sex=sa[:1], age=int(sa[1:]) if sa[1:].isdigit() else np.nan,
-                kin=h.get('kin'), bw=h.get('bw'), bwDiff=h.get('bwDiff'), blinker=bool(h.get('blinker')),
-                jockey=re.sub(r'^[▲△☆◇★]', '', h.get('jockey') or ''), appr=bool(re.match(r'^[▲△☆◇★]', h.get('jockey') or '')),
-                trainer=h.get('trainer') or '', rank=rk, time=tsec(h.get('time')), f3=tsec(h.get('f3')),
-                pos1=ps[0] if ps else np.nan, pos4=ps[-1] if ps else np.nan))
+        if r['id'] in done or r['date'] >= UNTIL: continue
+        done.add(r['id']); add(r, *lab.get(r['id'], ('', '')))
     print(yd, len(rows), file=sys.stderr)
+for p in EXTRA:
+    for l in open(p, encoding='utf-8'):
+        r = json.loads(l)
+        if r['id'] not in done: add(r, r.get('grade') or '', r.get('cond') or '', 1)
+    print(p, len(rows), file=sys.stderr)
 
 D = pd.DataFrame(rows); del rows
 D['odds'] = [odds.get((i, u), np.nan) for i, u in zip(D['id'], D['umaban'])]
@@ -140,10 +154,7 @@ prior_rate(['place', 'surf', 'dist', 'waku'], 'waku', k=200)   # 枠の有利不
 D['month'] = D['date'].dt.month
 D['mcos'] = np.cos(2 * np.pi * (D['date'].dt.dayofyear) / 365.25)    # 動画#19: 日付を季節の値に
 D['msin'] = np.sin(2 * np.pi * (D['date'].dt.dayofyear) / 365.25)
-for c in ['spdMax5', 'spdMean5', 'spd_1', 'jkWin', 'trWin', 'kin', 'winRate', 'rankMean5', 'sireSWin']:
-    gr = D.groupby('id')[c]
-    D[c + '_z'] = (D[c] - gr.transform('mean')) / gr.transform('std').replace(0, np.nan)
-    D[c + '_rk'] = gr.rank(ascending=c in ('kin', 'rankMean5'), method='min') / D['heads']
+D = rel(D, chokyo=False)
 D = D.sort_values(['date', 'id', 'umaban']).reset_index(drop=True)
 D.to_pickle(OUT)
 print('saved', OUT, D.shape, file=sys.stderr)

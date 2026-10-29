@@ -1,29 +1,31 @@
 # lgbm_features.py の表に、JRA-VAN の全調教(坂路 2005〜・ウッド 2021/7〜)の特徴量を足す(jv_chokyo_eval.pl と同じ切り方)
-# 使い方: python lgbm_chokyo.py <features.pkl> 馬情報/JRA-VAN <出力.pkl>
+# 使い方: python lgbm_chokyo.py <features.pkl> 馬情報/JRA-VAN <出力.pkl> [--upcoming]
+#  - --upcoming: これからのレース(lgbm_features.py の --extra)の行だけを出力する(当日の予想用。自動実行/AI馬券/morning.sh)
 #  - n14 / sl14 / wd14 = レース前14日の調教本数(全部・坂路・ウッド)、dn14 = n14 − その馬の前走たちの n14 の平均
 #  - 最終の坂路(レース前7日以内で最後の1本): ck4f(4F)・ck1f(終い1F)・ckAcc(終い1F < その前の1F)・ck4fD(4F − その馬のふだん)
-import sys
+import sys, glob
 import numpy as np, pandas as pd
 
-D = pd.read_pickle(sys.argv[1]); J = sys.argv[2]; OUT = sys.argv[3]
+D = pd.read_pickle(sys.argv[1]); J = sys.argv[2]; OUT = sys.argv[3]; ONLY = '--upcoming' in sys.argv
 need = set(D['horseId'].astype(str))
 
-def read(path, wood):
-    hid, day, t4, l1, l2 = [], [], [], [], []
+def read(paths, wood):   # 全データ/SLOP・WOOD/<年>.txt(update.sh が毎回足す)。同じ1本が2度入っていることがあるので、場所・日・時刻・馬で1本にする
+    hid, day, tm, t4, l1, l2 = [], [], [], [], [], []
     a, b, c = (79, 97, 100) if wood else (34, 52, 55)
-    with open(path, 'r', encoding='ascii', errors='replace') as f:
-        for l in f:
-            h = l[24:34]
-            if h not in need: continue
-            hid.append(h); day.append(l[12:20]); t4.append(l[a:a + 4]); l2.append(l[b:b + 3]); l1.append(l[c:c + 3])
-    w = pd.DataFrame({'horseId': hid, 'day': pd.to_datetime(day, format='%Y%m%d', errors='coerce'),
+    for path in paths:
+        with open(path, 'r', encoding='ascii', errors='replace') as f:
+            for l in f:
+                h = l[24:34]
+                if h not in need: continue
+                hid.append(h); day.append(l[12:20]); tm.append(l[11] + l[20:24]); t4.append(l[a:a + 4]); l2.append(l[b:b + 3]); l1.append(l[c:c + 3])
+    w = pd.DataFrame({'horseId': hid, 'tm': tm, 'day': pd.to_datetime(day, format='%Y%m%d', errors='coerce'),
                       't4': pd.to_numeric(t4, errors='coerce') / 10, 'l1': pd.to_numeric(l1, errors='coerce') / 10, 'l2': pd.to_numeric(l2, errors='coerce') / 10})
-    w['wood'] = wood
+    w = w.drop_duplicates(['horseId', 'day', 'tm'], keep='last'); w['wood'] = wood
     for c in ['t4', 'l1', 'l2']: w.loc[w[c] <= 0, c] = np.nan
-    print(path, len(w), file=sys.stderr)
+    print('坂路' if not wood else 'ウッド', len(w), file=sys.stderr)
     return w.dropna(subset=['day'])
 
-W = pd.concat([read(J + '/slop.txt', 0), read(J + '/wood.txt', 1)])
+W = pd.concat([read(sorted(glob.glob(J + '/全データ/SLOP/*.txt')), 0), read(sorted(glob.glob(J + '/全データ/WOOD/*.txt')), 1)])
 hcode = {h: i for i, h in enumerate(sorted(need))}
 W['k'] = W['horseId'].map(hcode).astype(np.int64) * 100000 + (W['day'] - pd.Timestamp('1980-01-01')).dt.days
 W = W.sort_values('k')
@@ -53,4 +55,5 @@ for c in ['ck4f', 'ck1f']:
     gr = D.groupby('id')[c]; D[c + '_rk'] = gr.rank(method='min') / D['heads']
 D = D.sort_values(['date', 'id', 'umaban']).reset_index(drop=True)
 print(D[['n14', 'nD', 'ck4f', 'ck1f', 'ckAcc', 'ck4fD', 'wc1f']].describe().round(2).to_string(), file=sys.stderr)
+if ONLY: D = D[D['upcoming'] == 1].reset_index(drop=True)
 D.to_pickle(OUT)
