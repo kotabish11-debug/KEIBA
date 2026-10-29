@@ -11,32 +11,17 @@
  "dir": "右",
  "courseNote": "外回り",
  "cond": "2歳牝 馬齢55kg",
- "stage": "特別登録",
+ "stage": "出走確定",
  "chaos": 20,
  "weather": null,
  "going": null,
- "updatedAt": "2026-10-25T19:30:00+09:00",
- "source": "JRA特別登録",
- "memo": "特別登録12頭(出走可能18頭、未確定)。近走・騎手・オッズは未収集のため能力値は全頭同じ仮値。出走確定(木〜金曜)後に付け直す。",
+ "updatedAt": "2026-10-29T18:30:00+09:00",
+ "source": "JRA出馬表",
+ "memo": "JRA出馬表で出走馬確定11頭(特別登録のシグレは出走せず)。騎手は出馬表どおり。枠順・オッズは未発表(オッズは仮)。能力値は仮値のまま(近走を見て付け直す)。",
  "horses": [
   {
    "name": "イモージェン",
-   "jockey": "未定",
-   "style": "先行",
-   "jisseki": 65,
-   "kyori": 70,
-   "course": 70,
-   "choshi": 70,
-   "kishu": 70,
-   "heavy": 0,
-   "odds": 12,
-   "oddsKari": true,
-   "umaban": null,
-   "note": "特別登録のみ。近走・血統は出走確定後に収集。"
-  },
-  {
-   "name": "シグレ",
-   "jockey": "未定",
+   "jockey": "C.デムーロ",
    "style": "先行",
    "jisseki": 65,
    "kyori": 70,
@@ -51,7 +36,7 @@
   },
   {
    "name": "シャンデヴァーグ",
-   "jockey": "未定",
+   "jockey": "鮫島 克駿",
    "style": "先行",
    "jisseki": 65,
    "kyori": 70,
@@ -66,7 +51,7 @@
   },
   {
    "name": "セイウンマイラヴ",
-   "jockey": "未定",
+   "jockey": "田山 旺佑",
    "style": "先行",
    "jisseki": 65,
    "kyori": 70,
@@ -81,7 +66,7 @@
   },
   {
    "name": "ツキミ",
-   "jockey": "未定",
+   "jockey": "川田 将雅",
    "style": "先行",
    "jisseki": 65,
    "kyori": 70,
@@ -96,7 +81,7 @@
   },
   {
    "name": "ニクスルーナ",
-   "jockey": "未定",
+   "jockey": "岩田 望来",
    "style": "先行",
    "jisseki": 65,
    "kyori": 70,
@@ -111,7 +96,7 @@
   },
   {
    "name": "バタフライ",
-   "jockey": "未定",
+   "jockey": "原田 和真",
    "style": "先行",
    "jisseki": 65,
    "kyori": 70,
@@ -126,7 +111,7 @@
   },
   {
    "name": "ビスケットサンド",
-   "jockey": "未定",
+   "jockey": "北村 友一",
    "style": "先行",
    "jisseki": 65,
    "kyori": 70,
@@ -141,7 +126,7 @@
   },
   {
    "name": "フェリチタ",
-   "jockey": "未定",
+   "jockey": "松山 弘平",
    "style": "先行",
    "jisseki": 65,
    "kyori": 70,
@@ -156,7 +141,7 @@
   },
   {
    "name": "ブライトスクリプト",
-   "jockey": "未定",
+   "jockey": "池添 謙一",
    "style": "先行",
    "jisseki": 65,
    "kyori": 70,
@@ -171,7 +156,7 @@
   },
   {
    "name": "ベニバナ",
-   "jockey": "未定",
+   "jockey": "幸 英明",
    "style": "先行",
    "jisseki": 65,
    "kyori": 70,
@@ -186,7 +171,7 @@
   },
   {
    "name": "レニュアージュ",
-   "jockey": "未定",
+   "jockey": "西村 淳也",
    "style": "先行",
    "jisseki": 65,
    "kyori": 70,
