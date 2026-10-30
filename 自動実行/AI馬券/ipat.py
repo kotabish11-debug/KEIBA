@@ -7,7 +7,8 @@
 # ログイン情報は %USERPROFILE%\.ipat.env に自分で書く(コードやリポジトリには置かない): INET_ID / KANYUSHA / PIN / PARS
 # 各手順の画面: 馬情報/JRA-VAN/AI馬券/ipat/<日時>_<tag>_<番号>_<手順>.png(PCだけ)。ID・番号を入れた画面は撮らない
 # 画面の作り(2026-10-31 に購入の手前まで確かめた): ログインのボタンは a[title=...]、メニュー以降は AngularJS の ng-click / ui-sref で探す
-#   「購入する」を押した後の画面だけは、まだ一度も確かめていない(最初の本当の購入で画面を見る)
+#   「購入する」を押した後の画面だけは、まだ一度も確かめていない。買えたかどうかは、投票履歴の「1日分購入金額」が買った額だけ増えたかで確かめる
+#   「購入する」を押した後に失敗したら PurchaseUnknown(買えたかどうか分からない)。live.py はその日はもう買わない(二重に買わないため)
 import sys, os, re, time, datetime as dt
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
@@ -37,6 +38,19 @@ class Step:
         loc = self.page.locator(sel) if isinstance(sel, str) else sel
         loc.first.wait_for(state='visible'); loc.first.click(); self.page.wait_for_load_state('networkidle'); time.sleep(wait); self.shot(name)
 
+class PurchaseUnknown(Exception): pass
+
+def history(page, st, name):
+    """投票履歴の(受付番号数, 1日分購入金額)。上の「投票履歴」で開いて「表示更新」してから読み、閉じる"""
+    page.locator('button.btn-reference:visible').first.click(); time.sleep(1.5)
+    upd = page.locator('button:visible', has_text='表示更新')
+    if upd.count(): upd.first.click(); time.sleep(2)
+    st.shot(name); body = page.inner_text('body')
+    n = re.search(r'受付番号数\s*([\d,]+)件', body); a = re.search(r'1日分購入金額\s*([\d,]+)円', body)
+    page.locator('button.btn-reference:visible').first.click(); time.sleep(1)
+    if not (n and a): raise RuntimeError('投票履歴の金額が読めない')
+    return int(n.group(1).replace(',', '')), int(a.group(1).replace(',', ''))
+
 def login(page, st):
     c = creds()
     page.goto('https://www.ipat.jra.go.jp/', wait_until='networkidle')
@@ -45,6 +59,8 @@ def login(page, st):
     st.click('a[title="ログイン"]', '加入者情報の画面')   # 撮るのは次の画面(まだ何も入れていない)
     page.locator('input[name="i"]').fill(c['KANYUSHA']); page.locator('input[name="p"]').fill(c['PIN']); page.locator('input[name="r"]').fill(c['PARS'])
     st.click('a[title="ネット投票メニューへ"]', 'メニュー', wait=2)
+    try: page.get_by_text('購入限度額').first.wait_for(state='visible', timeout=20000)   # メニューは表示に時間がかかることがある
+    except Exception: pass
     body = page.inner_text('body')
     if '購入限度額' not in body: raise RuntimeError('メニューの画面にならない(ログイン情報が違う・お知らせの画面など)')
     m = re.search(r'購入限度額\s*([\d,]+)円', body)
@@ -61,6 +77,7 @@ def buy(bets, confirm=False, tag='', headless=True):
         try:
             limit = login(page, st)
             if limit is not None and limit < total: raise RuntimeError(f'購入限度額 {limit}円 が合計 {total}円 より少ない')
+            n0, a0 = history(page, st, '投票履歴_前')
             st.click('button[ui-sref="bet.basic"]', '通常投票')
             races = {}
             for b in bets: races.setdefault((b[0], b[1]), []).append(b)
@@ -82,11 +99,18 @@ def buy(bets, confirm=False, tag='', headless=True):
             if not confirm: return 'checked'   # ipat_ok.txt は画面を確かめてから --approve で作る
             page.on('dialog', lambda d: d.accept())   # ブラウザの確認が出たとき
             st.click('button[ng-click="vm.clickPurchase()"]:visible', '購入する', wait=2)
-            ok = page.locator('button:visible', has_text=re.compile(r'^\s*OK\s*$'))   # 確認の小さい画面が出たとき
-            if ok.count(): ok.first.click(); page.wait_for_load_state('networkidle'); time.sleep(2)
-            st.shot('購入後')
-            body = page.inner_text('body')
-            if not any(k in body for k in ('受付', '受け付け', '完了')): raise RuntimeError('購入の完了が確かめられない(画面を見て、投票履歴で確認)')
+            try:   # ここから先の失敗は「買えたかどうか分からない」
+                ok = page.locator('button:visible', has_text=re.compile(r'^\s*OK\s*$'))   # 確認の小さい画面が出たとき
+                if ok.count(): ok.first.click(); page.wait_for_load_state('networkidle'); time.sleep(2)
+                st.shot('購入後')
+                for k in range(3):   # 結果の画面を閉じてから投票履歴を見る
+                    cl = page.locator('button:visible', has_text=re.compile(r'^\s*(閉じる|OK)\s*$'))
+                    if not cl.count(): break
+                    cl.first.click(); time.sleep(1)
+                n1, a1 = history(page, st, '投票履歴_後')
+            except Exception as ex:
+                raise PurchaseUnknown(f'購入する を押した後に失敗: {ex}')
+            if a1 - a0 != total: raise PurchaseUnknown(f'1日分購入金額が {a0}円 → {a1}円(買った額 {total}円 と合わない)')
             return 'bought'
         except Exception:
             try: st.fail('失敗')

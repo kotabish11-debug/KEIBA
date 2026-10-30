@@ -102,24 +102,29 @@ def append(rows):
 def money():
     """(今日の前までの資金, 1点の金額, 今日の上限)。資金 = 始めの資金 + 本当に買った分(bought)の 払戻 − 金額。結果待ちは払戻0として数える"""
     B0 = CFG['bankrollStart'] + sum(int(r['payout'] or 0) - int(r['stake'] or 0) for r in records()
-                                    if r['status'] == 'bought' and CFG['startDate'] <= r['date'] < DAY)
+                                    if r['status'] in ('bought', 'unknown') and CFG['startDate'] <= r['date'] < DAY)   # 不明は買ったとして数える
     f = lambda pct: max(100, int(B0 * pct / 100 / 100) * 100)   # 100円単位に切り捨て、最低100円
     return B0, f(CFG['stakePct']), f(CFG['dailyPct'])
 
-def run_race(e, odds, mode):
+HALT = False   # 買えたかどうか分からないことが起きたら、その日はもう買わない(二重に買わないため)
+
+def run_race(e, odds, mode, early=False):
+    """買い目を決めて買う。early = その日の最初の購入を早めに試す回(買い目が無ければ何も記録せず、いつもの時刻にもう一度)"""
+    global HALT
     rid = e['id']; R = predict(rid, odds)
-    if R is None: log(rid, '出走馬がそろわない'); return
+    if R is None: log(rid, '出走馬がそろわない'); return []
     names = {h['umaban']: h['name'] for h in e['horses']}
+    B = R[(R['ev'] >= CFG['evMin']) & (R['odds'] < CFG['oddsMax'])].sort_values('ev', ascending=False).head(CFG['maxPerRace'])
+    if early and not len(B): log(rid, f'{len(R)}頭 早めの判断: 買い目なし(いつもの時刻にもう一度)'); return []   # 予想の記録も書かない(書くと「済み」になる)
     with open(PF, 'a', encoding='utf-8') as f:
         f.write(json.dumps({'id': rid, 'at': dt.datetime.now().isoformat(timespec='seconds'), 'mode': mode,
                             'horses': [{'umaban': int(u), 'p': round(float(p), 4), 'tan': float(o), 'ev': round(float(v), 3)}
                                        for u, p, o, v in zip(R['umaban'], R['p'], R['odds'], R['ev'])]}, ensure_ascii=False) + '\n')
-    B = R[(R['ev'] >= CFG['evMin']) & (R['odds'] < CFG['oddsMax'])].sort_values('ev', ascending=False).head(CFG['maxPerRace'])
     B0, stake, cap = money()
-    spent = sum(int(r['stake'] or 0) for r in records() if r['date'] == DAY and r['status'] in ('bought', 'dry', 'browser', 'replay'))
+    spent = sum(int(r['stake'] or 0) for r in records() if r['date'] == DAY and r['status'] in ('bought', 'unknown', 'dry', 'browser', 'replay'))
     rows = []
     for _, b in B.iterrows():
-        st = 'stopped' if B0 < CFG['stopBelow'] else mode if spent + stake <= cap else 'over'
+        st = 'stopped' if B0 < CFG['stopBelow'] else 'halted' if HALT and mode == 'live' else mode if spent + stake <= cap else 'over'
         spent += stake if st == mode else 0
         rows.append({'date': DAY, 'raceId': rid, 'place': PLACE.get(rid[8:10], ''), 'R': int(rid[10:12]), 'post': e.get('post', ''),
                      'decidedAt': dt.datetime.now().strftime('%H:%M:%S'), 'umaban': int(b['umaban']), 'horse': names.get(int(b['umaban']), ''),
@@ -135,11 +140,16 @@ def run_race(e, odds, mode):
         try:
             ipat.buy([(r['place'], r['R'], r['umaban'], r['stake']) for r in buy], confirm=(mode == 'live'), tag=rid)
             for r in buy: r['status'] = 'bought' if mode == 'live' else 'browser'
+        except ipat.PurchaseUnknown as ex:
+            log(rid, '即PATで買えたかどうか分からない(今日はもう買わない。投票履歴を確認):', ex)
+            for r in buy: r['status'] = 'unknown'
+            HALT = True
         except Exception as ex:
-            log(rid, '即PATで失敗:', ex)
+            log(rid, '即PATで失敗(買っていない):', ex)
             for r in buy: r['status'] = 'failed'
     append(rows)
-    log(rid, f'{len(R)}頭', '買い目なし' if not rows else ' '.join(f"{r['umaban']}番({r['tan']}倍・期待値{r['ev']})" for r in rows))
+    log(rid, f'{len(R)}頭' + ('・早め' if early else ''), '買い目なし' if not rows else ' '.join(f"{r['umaban']}番({r['tan']}倍・期待値{r['ev']}・{r['status']})" for r in rows))
+    return rows
 
 done = {r['raceId'] for r in records() if r['date'] == DAY}
 if os.path.exists(PF):
@@ -157,13 +167,19 @@ if REPLAY:
             run_race(e, o, 'replay')
     sys.exit(0)
 for e in ENT:
-    post = dt.datetime.strptime(DAY + e['post'], '%Y-%m-%d%H%M'); at = post - dt.timedelta(minutes=CFG['leadMin'])
-    if dt.datetime.now() > post - dt.timedelta(minutes=2): log(e['id'], '締切を過ぎた'); continue
-    while dt.datetime.now() < at: time.sleep(min(30, max(1, (at - dt.datetime.now()).total_seconds())))
-    for k in range(3):
-        try: run_race(e, jra_odds(e['id']), CFG['mode']); break
-        except Exception as ex:
-            log(e['id'], 'やり直し:', ex)
-            if dt.datetime.now() > post - dt.timedelta(minutes=2, seconds=40): break
-            time.sleep(10)
+    post = dt.datetime.strptime(DAY + e['post'], '%Y-%m-%d%H%M')
+    # その日の最初の購入だけ早め(firstLeadMin 分前)に試す。買い目が無ければ、いつもの leadMin 分前にもう一度(2026-10-31 ユーザー指示)
+    first = CFG['mode'] == 'live' and not any(r['date'] == DAY and r['status'] in ('bought', 'unknown') for r in records())
+    times = ([(post - dt.timedelta(minutes=CFG['firstLeadMin']), True)] if first else []) + [(post - dt.timedelta(minutes=CFG['leadMin']), False)]
+    for at, early in times:
+        if dt.datetime.now() > post - dt.timedelta(minutes=2): log(e['id'], '締切を過ぎた'); break
+        while dt.datetime.now() < at: time.sleep(min(30, max(1, (at - dt.datetime.now()).total_seconds())))
+        rows = None
+        for k in range(3):
+            try: rows = run_race(e, jra_odds(e['id']), CFG['mode'], early); break
+            except Exception as ex:
+                log(e['id'], 'やり直し:', ex)
+                if dt.datetime.now() > post - dt.timedelta(minutes=2, seconds=40): break
+                time.sleep(10)
+        if not early or (rows and all(r['status'] != 'failed' for r in rows)): break   # 早めの回で買えた(か買わないと決まった)ら、いつもの時刻には見ない。失敗ならもう一度
 log('終わり')
