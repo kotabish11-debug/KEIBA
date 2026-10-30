@@ -99,6 +99,13 @@ def append(rows):
         if new: w.writeheader()
         for r in rows: w.writerow({k: r.get(k, '') for k in COLS})
 
+def money():
+    """(今日の前までの資金, 1点の金額, 今日の上限)。資金 = 始めの資金 + 本当に買った分(bought)の 払戻 − 金額。結果待ちは払戻0として数える"""
+    B0 = CFG['bankrollStart'] + sum(int(r['payout'] or 0) - int(r['stake'] or 0) for r in records()
+                                    if r['status'] == 'bought' and CFG['startDate'] <= r['date'] < DAY)
+    f = lambda pct: max(100, int(B0 * pct / 100 / 100) * 100)   # 100円単位に切り捨て、最低100円
+    return B0, f(CFG['stakePct']), f(CFG['dailyPct'])
+
 def run_race(e, odds, mode):
     rid = e['id']; R = predict(rid, odds)
     if R is None: log(rid, '出走馬がそろわない'); return
@@ -108,15 +115,21 @@ def run_race(e, odds, mode):
                             'horses': [{'umaban': int(u), 'p': round(float(p), 4), 'tan': float(o), 'ev': round(float(v), 3)}
                                        for u, p, o, v in zip(R['umaban'], R['p'], R['odds'], R['ev'])]}, ensure_ascii=False) + '\n')
     B = R[(R['ev'] >= CFG['evMin']) & (R['odds'] < CFG['oddsMax'])].sort_values('ev', ascending=False).head(CFG['maxPerRace'])
-    spent = sum(int(r['stake'] or 0) for r in records() if r['date'] == DAY and r['status'] in ('bought', 'dry', 'browser'))
+    B0, stake, cap = money()
+    spent = sum(int(r['stake'] or 0) for r in records() if r['date'] == DAY and r['status'] in ('bought', 'dry', 'browser', 'replay'))
     rows = []
     for _, b in B.iterrows():
-        ok = spent + CFG['stake'] <= CFG['dailyMax']; spent += CFG['stake'] if ok else 0
+        st = 'stopped' if B0 < CFG['stopBelow'] else mode if spent + stake <= cap else 'over'
+        spent += stake if st == mode else 0
         rows.append({'date': DAY, 'raceId': rid, 'place': PLACE.get(rid[8:10], ''), 'R': int(rid[10:12]), 'post': e.get('post', ''),
                      'decidedAt': dt.datetime.now().strftime('%H:%M:%S'), 'umaban': int(b['umaban']), 'horse': names.get(int(b['umaban']), ''),
                      'p': round(float(b['p']), 4), 'tan': float(b['odds']), 'ev': round(float(b['ev']), 3),
-                     'stake': CFG['stake'] if ok else 0, 'mode': mode, 'status': mode if ok else 'over'})
+                     'stake': stake if st == mode else 0, 'mode': mode, 'status': st})
     buy = [r for r in rows if r['status'] in ('browser', 'live')]
+    if buy and mode == 'live' and not os.path.exists(os.path.join(PRED, 'ipat_ok.txt')):
+        log(rid, '即PATの確かめ(ipat.py --check → --approve)が済んでいないので買わない')
+        for r in buy: r['status'] = 'notready'
+        buy = []
     if buy:
         import ipat
         try:
@@ -132,7 +145,8 @@ done = {r['raceId'] for r in records() if r['date'] == DAY}
 if os.path.exists(PF):
     done |= {json.loads(l)['id'] for l in open(PF, encoding='utf-8')}
 ENT = sorted([e for e in ENT if e['id'] not in done], key=lambda e: e.get('post', ''))
-log(f'{DAY}: {len(ENT)} レース(済み {len(done)})・mode={CFG["mode"] if not REPLAY else "replay"}')
+_b, _s, _c = money()
+log(f'{DAY}: {len(ENT)} レース(済み {len(done)})・mode={CFG["mode"] if not REPLAY else "replay"}・資金 {_b:,}円・1点 {_s}円・今日の上限 {_c}円' + ('・止める線を割っているので買わない' if _b < CFG['stopBelow'] else ''))
 if REPLAY:
     od = replay_odds([e['id'] for e in ENT], int(REPLAY))
     for e in ENT:

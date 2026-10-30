@@ -40,7 +40,13 @@ L = ['# AI馬券の成績', '', f'更新: {dt.datetime.now():%Y-%m-%d %H:%M}(`�
 for k in ['bought', 'dry', 'browser', 'over', 'failed']:
     rs = [r for r in done if r['status'] == k]
     if rs: L.append(f'| {k} ' + summ(rs))
-L.append('| 全部 ' + summ(done)); L += ['', '## 日ごと', '', '| 日 | 点数 | 的中 | 的中率 | 金額 | 払戻 | 回収率 |', '|---|---|---|---|---|---|---|']
+L.append('| 全部 ' + summ(done))
+import json
+cfg = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json'), encoding='utf-8'))
+real = [r for r in rows if r['status'] == 'bought' and r['date'] >= cfg['startDate']]
+bank = cfg['bankrollStart'] + sum(int(r['payout'] or 0) - int(r['stake'] or 0) for r in real)
+L[4:4] = [f"**資金: {bank:,}円**(始め {cfg['bankrollStart']:,}円・{cfg['startDate']}〜。本当に買った分だけ。結果待ちは払戻0で数える)", '']
+L += ['', '## 日ごと', '', '| 日 | 点数 | 的中 | 的中率 | 金額 | 払戻 | 回収率 |', '|---|---|---|---|---|---|---|']
 for day in sorted({r['date'] for r in done}, reverse=True): L.append(f'| {day} ' + summ([r for r in done if r['date'] == day]))
 L += ['', f'結果待ち: {len(rows) - len(done)} 行']
 open(os.path.join(os.path.dirname(REC), '成績.md'), 'w', encoding='utf-8').write('\n'.join(L) + '\n')

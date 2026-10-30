@@ -2,10 +2,11 @@
 #   ログイン → 通常投票 → 場 → レース → 式別 → 馬番 → 金額 → セット(繰り返し)→ 入力終了 → 合計金額 → 購入する)
 # 使い方: live.py が buy() を呼ぶ。単体で確かめるとき: python ipat.py --check <場 東京> <R 11> <馬番 1>
 #   --check は購入の手前(合計金額を入れたところ)まで進んで止め、画面を保存して閉じる。買わない
+#   --approve: --check の画面(選んだ場・レース・馬番・金額が正しいか)を見て確かめたあとに実行する。ipat_ok.txt ができ、live.py が本当に買うようになる
 # ログイン情報は %USERPROFILE%\.ipat.env に自分で書く(コードやリポジトリには置かない):
 #   INET_ID=xxxxxxxx / KANYUSHA=加入者番号 / PIN=暗証番号 / PARS=P-ARS番号
 # 各手順の画面: 馬情報/JRA-VAN/AI馬券/ipat/<日時>_<tag>_<番号>_<手順>.png(PCだけ)
-# 注意: 即PATの中の画面は作った時点で確かめていない(ログイン情報が無いため)。--check が通るまで、live.py は本当に買わない(ipat_ok.txt)
+# 注意: 即PATの中の画面は作った時点で確かめていない(ログイン情報が無いため)。--check の画面を確かめて --approve するまで、live.py は本当に買わない(ipat_ok.txt)
 import sys, os, time, datetime as dt
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
@@ -46,7 +47,7 @@ def login(page, st):
 def buy(bets, confirm=False, tag='', headless=True):
     """bets = [(場 '東京', R 11, 馬番 3, 金額 100), ...]。confirm=False なら合計金額を入れたところで止めて閉じる(買わない)"""
     from playwright.sync_api import sync_playwright
-    if confirm and not os.path.exists(OKF): raise RuntimeError('ipat.py --check がまだ通っていないので買わない')
+    if confirm and not os.path.exists(OKF): raise RuntimeError('ipat.py --check の画面を確かめて --approve するまで買わない')
     total = sum(b[3] for b in bets)
     with sync_playwright() as p:
         br = p.chromium.launch(headless=headless); page = br.new_page(locale='ja-JP'); page.set_default_timeout(15000)
@@ -67,9 +68,7 @@ def buy(bets, confirm=False, tag='', headless=True):
                     st.click_text('セット', name=f'{u}番セット')
             st.click_text('入力終了', name='入力終了')
             page.get_by_role('textbox').last.fill(str(total)); st.shot(f'合計{total}円')
-            if not confirm:
-                open(OKF, 'w', encoding='utf-8').write(f'{dt.datetime.now().isoformat()} 購入の手前まで進めた({tag})\n')
-                return 'checked'
+            if not confirm: return 'checked'   # ipat_ok.txt は画面を確かめてから --approve で作る
             page.once('dialog', lambda d: d.accept())   # 「購入しますか」の確認
             st.click_text('購入する', name='購入する')
             for t in ('OK',):
@@ -86,6 +85,9 @@ def buy(bets, confirm=False, tag='', headless=True):
             br.close()
 
 if __name__ == '__main__':
+    if sys.argv[1:2] == ['--approve']:
+        os.makedirs(os.path.dirname(OKF), exist_ok=True)
+        open(OKF, 'w', encoding='utf-8').write(f'{dt.datetime.now().isoformat()} --check の画面を確かめた\n'); print('承認した:', OKF)
     if sys.argv[1:2] == ['--check']:
         place, R, u = sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
         print(buy([(place, R, u, 100)], confirm=False, tag='check', headless='--show' not in sys.argv))
