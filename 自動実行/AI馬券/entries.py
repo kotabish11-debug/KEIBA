@@ -5,6 +5,7 @@
 #   出力の1行 = 1レース。post = 発走時刻(HHMM)。騎手・調教師の名前は、JRA-VAN の略称ではなく JRA詳細 と同じ正式名にする
 #   (過去2年の SE と JRA詳細 を馬番で突き合わせて、騎手コード・調教師コード → 名前 の表を作る)
 import sys, os, glob, json
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); from jvfix import fixline   # 2026-10-27 以降の化けたレコードを直す
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 RACE = os.path.join(ROOT, '馬情報', 'JRA-VAN', '全データ', 'RACE'); HIST = os.path.join(ROOT, '馬情報', '過去レースデータ', '全期間')
 DAYS = sys.argv[1].split(','); OUT = sys.argv[2]; CHECK = '--check' in sys.argv
@@ -23,6 +24,7 @@ for y in years:
     for l in open(p, 'rb'):
         t = l[:2]
         if t not in (b'RA', b'SE'): continue
+        l = fixline(l)
         day = l[11:19].decode(); rid = day + d(l[19:21]) + d(l[25:27])
         if t == b'SE' and l[2:3] == b'7': past.append((rid, int(d(l[28:30])), d(l[296:301]), d(l[85:90])))
         if day not in DAYS: continue
@@ -57,11 +59,12 @@ for rid, (_, r) in sorted(ra.items()):
     H = []
     for (rr, u), (_, s) in sorted(se.items()):
         if rr != rid: continue
-        if d(s[331:332]) not in ('0', ''): continue   # 取消・除外など
+        if u == 0 or d(s[331:332]) not in ('0', ''): continue   # 馬番がまだ無い(木曜の出走馬名表)・取消・除外など
         sex = {'1': '牡', '2': '牝', '3': 'せん'}.get(d(s[78:79]), '')
         bw = d(s[324:327]); sg = d(s[327:328]); df = d(s[328:331])
         jc, tc = d(s[296:301]), d(s[85:90])
-        H.append({'horseId': d(s[30:40]), 'name': d(s[40:76]), 'umaban': u, 'waku': num(s[27:28]),
+        nm = d(s[40:76]); nm = '' if '?' in nm else nm   # 化けて直せなかった馬名は空にする(記録用なだけ)
+        H.append({'horseId': d(s[30:40]), 'name': nm, 'umaban': u, 'waku': num(s[27:28]),
                   'sexAge': sex + str(num(s[82:84])), 'kin': (num(s[288:291], None) or 0) / 10 or None, 'blinker': d(s[294:295]) == '1',
                   'jockey': JN.get(jc, d(s[306:314])), 'trainer': TN.get(tc, d(s[90:98])),
                   'bw': int(bw) if bw.isdigit() and int(bw) > 0 else None,

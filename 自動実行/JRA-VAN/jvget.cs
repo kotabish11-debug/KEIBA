@@ -11,6 +11,15 @@ using System.Collections.Generic;
 class JvGet
 {
     static Encoding sjis = Encoding.GetEncoding(932);
+    static Encoding cp1252 = Encoding.GetEncoding(1252);
+    // JV-Link が Shift-JIS を cp1252 として文字にして返すことがある(PC収集から動いたとき。2026-10-27〜の RACE が化けていた)。
+    // 日本語(U+3000 以上)が無く、U+0080 以上の文字があるときは cp1252 で元のバイトに戻す
+    static byte[] Bytes(string s)
+    {
+        bool jp = false, latin = false;
+        foreach (char ch in s) { if (ch >= 0x3000) { jp = true; break; } if (ch >= 0x80) latin = true; }
+        return (!jp && latin) ? cp1252.GetBytes(s) : sjis.GetBytes(s);
+    }
 
     [STAThread]
     static int Main(string[] a)
@@ -54,7 +63,7 @@ class JvGet
                 if (x < 0) { Console.Error.WriteLine("JVRead " + x + " " + fn); return 1; }
                 n++;
                 if (want != null && !want.Contains(buf.Substring(0, 2))) continue;
-                byte[] b = sjis.GetBytes(buf.TrimEnd('\r', '\n', '\0'));
+                byte[] b = Bytes(buf.TrimEnd('\r', '\n', '\0'));
                 w.Write(b, 0, b.Length); w.WriteByte(10);
                 kept++;
                 if (n % 200000 == 0) Console.Error.WriteLine(n + " 件");
@@ -84,7 +93,7 @@ class JvGet
                     if (x == -1) continue;
                     if (x == -3) { Thread.Sleep(100); continue; }
                     if (x < 0) { Console.Error.WriteLine("JVRead " + x + " " + k); break; }
-                    byte[] b = sjis.GetBytes(buf.TrimEnd('\r', '\n', '\0'));
+                    byte[] b = Bytes(buf.TrimEnd('\r', '\n', '\0'));
                     w.Write(b, 0, b.Length); w.WriteByte(10);
                 }
                 jv.JVClose();

@@ -10,12 +10,14 @@ if not os.path.exists(REC): sys.exit(0)
 rows = list(csv.DictReader(open(REC, encoding='utf-8-sig'))); cols = list(rows[0].keys()) if rows else []
 need = {r['raceId'] for r in rows if r['rank'] == ''}
 d = lambda b: b.decode('cp932', 'replace').strip()
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); from jvfix import fixline   # 2026-10-27 以降の化けたレコードを直す
 res = {}
 for y in sorted({x[:4] for x in need}):
     p = os.path.join(ROOT, '馬情報', 'JRA-VAN', '全データ', 'RACE', y + '.txt')
     if not os.path.exists(p): continue
     for l in open(p, 'rb'):
         if l[:3] != b'SE7': continue
+        l = fixline(l)
         rid = d(l[11:19]) + d(l[19:21]) + d(l[25:27])
         if rid in need: res[(rid, int(d(l[28:30])))] = (d(l[334:336]), d(l[359:363]))
 n = 0
